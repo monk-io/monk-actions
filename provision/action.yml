@@ -1,0 +1,83 @@
+name: "Monk Capsule — Provision"
+description: "Provision (or reuse) a Monk cluster for a capsule environment. Supports cloud mode (creates a fresh cluster per branch) and cluster mode (deploys onto a shared cluster)."
+inputs:
+  monk-token:
+    description: "Capsule master token. Pass ${{ secrets.MONK_CAPSULE_TOKEN }}."
+    required: true
+  cluster-name:
+    description: "Name of the cluster to create or reuse (cloud mode only)."
+    required: false
+  environment-name:
+    description: "Capsule environment name (typically the branch slug)."
+    required: true
+  branch-name:
+    description: "Source branch name."
+    required: false
+  branch-tag:
+    description: "Monk tag applied to the cluster (cloud mode)."
+    required: false
+  capsule-mode:
+    description: "'cloud' (new cluster per branch) or 'cluster' (shared cluster)."
+    required: true
+  # ── Cloud-mode inputs ───────────────────────────────────────────────────
+  cloud-provider:
+    description: "Cloud provider (digitalocean | hetzner | aws | azure | gcp)."
+    required: false
+  cloud-region:
+    description: "Cloud region (e.g. fra1, us-east-1)."
+    required: false
+  cloud-zone:
+    description: "Cloud availability zone (required for AWS/GCP)."
+    required: false
+  cloud-instance-type:
+    description: "Instance type per peer (e.g. s-2vcpu-2gb, t3.medium)."
+    required: false
+  cloud-instance-count:
+    description: "Number of peers to provision."
+    required: false
+  cloud-disk-size:
+    description: "Per-instance disk size in GB (AWS/Azure/GCP)."
+    required: false
+  cloud-credentials:
+    description: "Multiline KEY=value pairs of provider credentials (e.g. DO_API_TOKEN, AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY)."
+    required: false
+  # ── Cluster-mode inputs ─────────────────────────────────────────────────
+  target-cluster-id:
+    description: "ID of the shared cluster (cluster mode)."
+    required: false
+  target-cluster-token:
+    description: "Service token for the shared cluster (cluster mode)."
+    required: false
+  peer-pool-tag:
+    description: "Tag identifying which peers form the capsule pool."
+    required: false
+    default: "capsule-pool"
+  # ── Workload secrets ────────────────────────────────────────────────────
+  workload-secrets:
+    description: "Multiline KEY=value pairs of workload secrets to seed into the cluster (one per line)."
+    required: false
+runs:
+  using: docker
+  image: docker://monkreleases.azurecr.io/monk-actions:v1
+  entrypoint: /opt/monk-actions/entrypoints/provision.sh
+  env:
+    MONK_CAPSULE_TOKEN: ${{ inputs.monk-token }}
+    CLUSTER_NAME: ${{ inputs.cluster-name }}
+    ENVIRONMENT_NAME: ${{ inputs.environment-name }}
+    BRANCH_NAME: ${{ inputs.branch-name }}
+    BRANCH_TAG: ${{ inputs.branch-tag }}
+    CAPSULE_MODE: ${{ inputs.capsule-mode }}
+    CLOUD_PROVIDER: ${{ inputs.cloud-provider }}
+    CLOUD_REGION: ${{ inputs.cloud-region }}
+    CLOUD_ZONE: ${{ inputs.cloud-zone }}
+    CLOUD_INSTANCE_TYPE: ${{ inputs.cloud-instance-type }}
+    CLOUD_INSTANCE_COUNT: ${{ inputs.cloud-instance-count }}
+    CLOUD_DISK_SIZE: ${{ inputs.cloud-disk-size }}
+    CLOUD_CREDENTIALS: ${{ inputs.cloud-credentials }}
+    TARGET_CLUSTER_ID: ${{ inputs.target-cluster-id }}
+    TARGET_CLUSTER_TOKEN: ${{ inputs.target-cluster-token }}
+    PEER_POOL_TAG: ${{ inputs.peer-pool-tag }}
+    WORKLOAD_SECRETS: ${{ inputs.workload-secrets }}
+branding:
+  icon: box
+  color: purple

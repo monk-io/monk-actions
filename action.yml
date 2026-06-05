@@ -1,0 +1,25 @@
+name: "Monk Capsules"
+description: "Provision and manage Monk Capsule environments — fully isolated, prod-like preview environments per branch. This umbrella action documents the suite; consumers reference the sub-actions (provision, fetch-metadata, build-images, deploy, cleanup) directly via uses: monk-io/monk-actions/<op>@v1."
+inputs:
+  monk-token:
+    description: "Capsule master token. Pass ${{ secrets.MONK_CAPSULE_TOKEN }}."
+    required: true
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        cat <<'EOF'
+        This is the Monk Capsules umbrella action. It is not intended to be
+        invoked directly — instead, reference the sub-actions in your workflow:
+          - monk-io/monk-actions/provision@v1
+          - monk-io/monk-actions/fetch-metadata@v1
+          - monk-io/monk-actions/build-images@v1
+          - monk-io/monk-actions/deploy@v1
+          - monk-io/monk-actions/cleanup@v1
+        See https://github.com/monk-io/monk-actions for the full workflow example.
+        EOF
+        exit 1
+branding:
+  icon: box
+  color: purple

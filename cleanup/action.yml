@@ -1,0 +1,49 @@
+name: "Monk Capsule — Cleanup"
+description: "Tear down a capsule: stop workloads, nuke the cluster (cloud mode) or unload templates (cluster mode), and optionally delete backend records."
+inputs:
+  monk-token:
+    description: "Capsule master token."
+    required: true
+  cluster-name:
+    description: "Name of the cluster (cloud mode)."
+    required: false
+  environment-name:
+    description: "Capsule environment name (typically the branch slug)."
+    required: true
+  workload:
+    description: "Fully qualified workload name (cluster mode; used to identify what to unload)."
+    required: false
+  capsule-mode:
+    description: "'cloud' or 'cluster'."
+    required: true
+  delete-records:
+    description: "If true, delete the environment record from the backend after cleanup. Default false (keeps record for re-provision)."
+    required: false
+    default: "false"
+  workload-secrets:
+    description: "Multiline KEY=value bag; only the keys are used to identify scoped secrets to remove (cluster mode)."
+    required: false
+  # ── Cluster-mode only ───────────────────────────────────────────────────
+  target-cluster-token:
+    description: "Service token for the shared cluster (cluster mode)."
+    required: false
+  target-cluster-id:
+    description: "ID of the shared cluster (cluster mode)."
+    required: false
+runs:
+  using: docker
+  image: docker://monkreleases.azurecr.io/monk-actions:v1
+  entrypoint: /opt/monk-actions/entrypoints/cleanup.sh
+  env:
+    MONK_CAPSULE_TOKEN: ${{ inputs.monk-token }}
+    CLUSTER_NAME: ${{ inputs.cluster-name }}
+    ENVIRONMENT_NAME: ${{ inputs.environment-name }}
+    MONK_WORKLOAD: ${{ inputs.workload }}
+    CAPSULE_MODE: ${{ inputs.capsule-mode }}
+    CAPSULE_DELETE_RECORDS: ${{ inputs.delete-records }}
+    WORKLOAD_SECRETS: ${{ inputs.workload-secrets }}
+    TARGET_CLUSTER_TOKEN: ${{ inputs.target-cluster-token }}
+    TARGET_CLUSTER_ID: ${{ inputs.target-cluster-id }}
+branding:
+  icon: box
+  color: purple

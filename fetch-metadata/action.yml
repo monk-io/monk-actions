@@ -1,0 +1,44 @@
+name: "Monk Capsule — Fetch Metadata"
+description: "Fetch capsule metadata (monkcode, JIT tokens, registry credentials) after provisioning. Outputs are double-base64'd to survive GitHub log masking across step boundaries — consumer actions decode internally."
+inputs:
+  monk-token:
+    description: "Capsule master token. Pass ${{ secrets.MONK_CAPSULE_TOKEN }}."
+    required: true
+  environment-name:
+    description: "Capsule environment name (typically the branch slug)."
+    required: true
+  target-cluster-token:
+    description: "Optional cluster service token (cluster mode). Preferred over JIT minting when present."
+    required: false
+outputs:
+  monkcode:
+    description: "Cluster monkcode (double-base64'd)."
+  monk_jit_cli_token:
+    description: "JIT CLI token for cluster operations (double-base64'd)."
+  capsule_metadata_jit_token:
+    description: "JIT token for PATCHing capsule metadata (double-base64'd)."
+  registry_address:
+    description: "Per-cluster registry hostname:port."
+  registry_username:
+    description: "Per-cluster registry username."
+  registry_password:
+    description: "Per-cluster registry password (double-base64'd)."
+  subscription_api_base:
+    description: "Pass-through of MONK_SUBSCRIPTION_API_BASE for downstream jobs."
+  org_slug:
+    description: "Pass-through of MONK_ORG_SLUG."
+  api_prefix:
+    description: "Pass-through of MONK_API_PREFIX."
+  project_slug:
+    description: "Pass-through of MONK_PROJECT_SLUG."
+runs:
+  using: docker
+  image: docker://monkreleases.azurecr.io/monk-actions:v1
+  entrypoint: /opt/monk-actions/entrypoints/fetch-metadata.sh
+  env:
+    MONK_CAPSULE_TOKEN: ${{ inputs.monk-token }}
+    ENVIRONMENT_NAME: ${{ inputs.environment-name }}
+    TARGET_CLUSTER_TOKEN: ${{ inputs.target-cluster-token }}
+branding:
+  icon: box
+  color: purple

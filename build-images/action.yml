@@ -1,0 +1,44 @@
+name: "Monk Capsule — Build Images"
+description: "Build and push all images declared in MANIFEST to the per-cluster Monk registry. Runs as a composite action on the host runner (not in a container) so podman/docker can layer-build natively."
+inputs:
+  registry-address:
+    description: "Per-cluster registry hostname:port (from fetch-metadata)."
+    required: true
+  registry-username:
+    description: "Per-cluster registry username (from fetch-metadata)."
+    required: true
+  registry-password-b64:
+    description: "Per-cluster registry password, double-base64'd (from fetch-metadata)."
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Install podman
+      shell: bash
+      run: |
+        if ! command -v podman >/dev/null 2>&1; then
+          sudo apt-get update
+          sudo apt-get install -y podman
+        fi
+    - name: Build and push images
+      shell: bash
+      env:
+        REGISTRY_ADDRESS: ${{ inputs.registry-address }}
+        REGISTRY_USERNAME: ${{ inputs.registry-username }}
+        REGISTRY_PASSWORD_B64: ${{ inputs.registry-password-b64 }}
+        PARSE_MANIFEST: ${{ github.action_path }}/../scripts/parse-manifest.sh
+        BUILD_IMAGES_SCRIPT: ${{ github.action_path }}/../scripts/build-images.sh
+      run: |
+        set -e
+        REGISTRY_PASSWORD=$(echo "$REGISTRY_PASSWORD_B64" | base64 -di | base64 -di)
+        echo "::add-mask::$REGISTRY_PASSWORD"
+        export REGISTRY_PASSWORD
+        if [ -z "$REGISTRY_ADDRESS" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ]; then
+          echo "::error::Registry credentials are required"
+          exit 1
+        fi
+        chmod +x "$PARSE_MANIFEST" "$BUILD_IMAGES_SCRIPT"
+        "$BUILD_IMAGES_SCRIPT"
+branding:
+  icon: box
+  color: purple

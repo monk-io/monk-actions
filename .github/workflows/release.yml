@@ -1,0 +1,74 @@
+name: Release
+
+# Build and push the monk-actions Docker image when a vX.Y.Z tag is pushed.
+# The action.yml files reference the image as :v1 (floating major-version tag),
+# which is updated to point at this release.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+      - 'v*.*.*-rc*'
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # to draft/update releases
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tags
+        id: tags
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          MAJOR="${TAG%%.*}"          # v1.2.3 → v1
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
+          # Pre-release tags (vX.Y.Z-rc.N) should NOT update the floating v1 tag.
+          case "$TAG" in
+            *-*) echo "is_prerelease=true"  >> "$GITHUB_OUTPUT" ;;
+            *)   echo "is_prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Read pinned monk-ci version
+        id: monkci
+        run: |
+          VERSION=$(cat MONK_CI_VERSION 2>/dev/null || echo "latest")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: monkreleases.azurecr.io
+          username: ${{ secrets.AZURE_REGISTRY_USERNAME }}
+          password: ${{ secrets.AZURE_REGISTRY_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          build-args: |
+            MONK_CI_VERSION=${{ steps.monkci.outputs.version }}
+          tags: |
+            monkreleases.azurecr.io/monk-actions:${{ steps.tags.outputs.tag }}
+            ${{ steps.tags.outputs.is_prerelease == 'false' && format('monkreleases.azurecr.io/monk-actions:{0}', steps.tags.outputs.major) || '' }}
+
+      - name: Update floating major tag in this repo
+        if: steps.tags.outputs.is_prerelease == 'false'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "${{ steps.tags.outputs.major }}" "${GITHUB_SHA}"
+          git push -f origin "${{ steps.tags.outputs.major }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tags.outputs.tag }}
+          prerelease: ${{ steps.tags.outputs.is_prerelease == 'true' }}
+          generate_release_notes: true
