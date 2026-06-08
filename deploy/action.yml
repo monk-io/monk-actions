@@ -29,7 +29,7 @@ outputs:
     description: "Best-effort preview URL for the deployed workload. Empty if it could not be determined."
 runs:
   using: docker
-  image: docker://monkreleases.azurecr.io/monk-actions:v1
+  image: docker://monkimages.azurecr.io/monk-actions:v1
   entrypoint: /opt/monk-actions/entrypoints/deploy.sh
   env:
     MONKCODE_B64: ${{ inputs.monkcode-b64 }}
