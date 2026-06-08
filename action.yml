@@ -2,7 +2,7 @@ name: "Monk Capsules"
 description: "Provision and manage Monk Capsule environments — fully isolated, prod-like preview environments per branch. This umbrella action documents the suite; consumers reference the sub-actions (provision, fetch-metadata, build-images, deploy, cleanup) directly via uses: monk-io/monk-actions/<op>@v1."
 inputs:
   monk-token:
-    description: "Capsule master token. Pass ${{ secrets.MONK_CAPSULE_TOKEN }}."
+    description: "Capsule master token (typically the MONK_CAPSULE_TOKEN repo secret)."
     required: true
 runs:
   using: composite

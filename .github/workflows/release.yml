@@ -56,7 +56,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Docker auth
-        run: docker login -u ${{ env.REGISTRY_AZURE_USER }} -p ${{ secrets.REGISTRY_AZURE_PASSWORD }} ${{ env.REGISTRY_AZURE }}
+        run: echo "${{ secrets.REGISTRY_AZURE_PASSWORD }}" | docker login -u ${{ env.REGISTRY_AZURE_USER }} --password-stdin ${{ env.REGISTRY_AZURE }}
 
       - name: Set image refs
         run: |

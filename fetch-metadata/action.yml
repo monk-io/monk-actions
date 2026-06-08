@@ -2,7 +2,7 @@ name: "Monk Capsule — Fetch Metadata"
 description: "Fetch capsule metadata (monkcode, JIT tokens, registry credentials) after provisioning. Outputs are double-base64'd to survive GitHub log masking across step boundaries — consumer actions decode internally."
 inputs:
   monk-token:
-    description: "Capsule master token. Pass ${{ secrets.MONK_CAPSULE_TOKEN }}."
+    description: "Capsule master token (typically the MONK_CAPSULE_TOKEN repo secret)."
     required: true
   environment-name:
     description: "Capsule environment name (typically the branch slug)."

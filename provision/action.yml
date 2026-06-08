@@ -2,7 +2,7 @@ name: "Monk Capsule — Provision"
 description: "Provision (or reuse) a Monk cluster for a capsule environment. Supports cloud mode (creates a fresh cluster per branch) and cluster mode (deploys onto a shared cluster)."
 inputs:
   monk-token:
-    description: "Capsule master token. Pass ${{ secrets.MONK_CAPSULE_TOKEN }}."
+    description: "Capsule master token (typically the MONK_CAPSULE_TOKEN repo secret)."
     required: true
   cluster-name:
     description: "Name of the cluster to create or reuse (cloud mode only)."
