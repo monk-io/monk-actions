@@ -58,7 +58,7 @@ inputs:
     required: false
 runs:
   using: docker
-  image: docker://monkimages.azurecr.io/monk-actions:v1
+  image: docker://monkimages.azurecr.io/monk-actions:v1.0.1-rc.1
   entrypoint: /opt/monk-actions/entrypoints/provision.sh
   env:
     MONK_CAPSULE_TOKEN: ${{ inputs.monk-token }}
