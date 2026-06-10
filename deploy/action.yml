@@ -1,23 +1,32 @@
 name: "Monk Capsule — Deploy"
-description: "Deploy a workload to a provisioned capsule. Consumes monkcode and service token from the fetch-metadata action."
+description: "Deploy a workload to a Monk cluster. Capsule flows pass double-base64'd credentials from the fetch-metadata action; static CI/CD flows pass plain monkcode/service-token secrets."
 inputs:
+  # ── Capsule flows (from fetch-metadata outputs) ─────────────────────────
   monkcode-b64:
     description: "Cluster monkcode (double-base64'd; pass from fetch-metadata.outputs.monkcode)."
-    required: true
+    required: false
   monk-jit-cli-token-b64:
     description: "JIT CLI token (double-base64'd; pass from fetch-metadata.outputs.monk_jit_cli_token)."
-    required: true
+    required: false
+  # ── Static CI/CD flows (plain repo secrets) ─────────────────────────────
+  monkcode:
+    description: "Cluster monkcode (plain; typically the MONKCODE repo secret). Ignored when monkcode-b64 is set."
+    required: false
+  service-token:
+    description: "Monk service token (plain; typically the MONK_SERVICE_TOKEN repo secret). Ignored when monk-jit-cli-token-b64 is set."
+    required: false
+  # ── Common ──────────────────────────────────────────────────────────────
   workload:
     description: "Fully qualified workload name (e.g. <repo>/<workload>)."
     required: true
   environment-name:
-    description: "Capsule environment name (typically the branch slug)."
-    required: true
+    description: "Capsule environment name (typically the branch slug). Required in cloud/cluster mode; unused in static mode."
+    required: false
   branch-tag:
-    description: "Tag to deploy under (cloud mode)."
+    description: "Tag to deploy under (cloud/static mode)."
     required: false
   capsule-mode:
-    description: "'cloud' or 'cluster'."
+    description: "'cloud' (per-branch capsule cluster), 'cluster' (shared capsule cluster), or 'static' (plain CI/CD deploy to a fixed cluster)."
     required: false
     default: "cloud"
   peer-pool-tag:
@@ -34,6 +43,8 @@ runs:
   env:
     MONKCODE_B64: ${{ inputs.monkcode-b64 }}
     MONK_JIT_CLI_TOKEN_B64: ${{ inputs.monk-jit-cli-token-b64 }}
+    MONKCODE: ${{ inputs.monkcode }}
+    MONK_SERVICE_TOKEN: ${{ inputs.service-token }}
     MONK_WORKLOAD: ${{ inputs.workload }}
     ENVIRONMENT_NAME: ${{ inputs.environment-name }}
     BRANCH_TAG: ${{ inputs.branch-tag }}

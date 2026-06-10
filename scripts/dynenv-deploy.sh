@@ -6,11 +6,11 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-printf "${GREEN}Monk Capsules - Deploy${NC}\n"
+printf "${GREEN}Monk Deploy${NC}\n"
 
 # Validate required env vars
-# MONKCODE and MONK_SERVICE_TOKEN are set by the workflow job before invoking this script
-for var in MONKCODE MONK_SERVICE_TOKEN MONK_WORKLOAD ENVIRONMENT_NAME; do
+# MONKCODE and MONK_SERVICE_TOKEN are set by the entrypoint before invoking this script
+for var in MONKCODE MONK_SERVICE_TOKEN MONK_WORKLOAD; do
     eval val=\$$var
     if [ -z "$val" ]; then
         printf "${RED}Error: $var is required${NC}\n"
@@ -18,7 +18,15 @@ for var in MONKCODE MONK_SERVICE_TOKEN MONK_WORKLOAD ENVIRONMENT_NAME; do
     fi
 done
 
+# Modes:
+#   cloud   — capsule on a per-branch cluster (scoped by environment variable)
+#   cluster — capsule on a shared cluster (repo-namespaced, scoped secrets)
+#   static  — plain CI/CD deploy to a fixed cluster, no capsule environment
 CAPSULE_MODE="${CAPSULE_MODE:-cloud}"
+if [ "$CAPSULE_MODE" != "static" ] && [ -z "$ENVIRONMENT_NAME" ]; then
+    printf "${RED}Error: ENVIRONMENT_NAME is required in '$CAPSULE_MODE' mode${NC}\n"
+    exit 1
+fi
 if [ "$CAPSULE_MODE" = "cluster" ]; then
     MONK_REPO="$ENVIRONMENT_NAME"
     MONK_TAG="${PEER_POOL_TAG:-capsule-pool}"
@@ -46,6 +54,12 @@ if [ -n "$MONK_REPO" ]; then
     printf "${GREEN}Deploying workload $MONK_REPO/$MONK_WORKLOAD to tag $MONK_TAG...${NC}\n"
     monk update -t "$MONK_TAG" --repo "$MONK_REPO" --secret-scope "$MONK_REPO" \
         -s environment="$ENVIRONMENT_NAME" "$MONK_REPO/$MONK_WORKLOAD"
+elif [ "$CAPSULE_MODE" = "static" ]; then
+    printf "${GREEN}Loading MANIFEST...${NC}\n"
+    monk load MANIFEST
+
+    printf "${GREEN}Deploying workload $MONK_WORKLOAD to tag $MONK_TAG...${NC}\n"
+    monk update -t "$MONK_TAG" "$MONK_WORKLOAD"
 else
     printf "${GREEN}Loading MANIFEST...${NC}\n"
     monk load MANIFEST
