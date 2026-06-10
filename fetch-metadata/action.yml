@@ -33,7 +33,7 @@ outputs:
     description: "Pass-through of MONK_PROJECT_SLUG."
 runs:
   using: docker
-  image: docker://monkimages.azurecr.io/monk-actions:v1
+  image: docker://monkimages.azurecr.io/monk-actions:v1.0.1-rc.2
   entrypoint: /opt/monk-actions/entrypoints/fetch-metadata.sh
   env:
     MONK_CAPSULE_TOKEN: ${{ inputs.monk-token }}
