@@ -1,9 +1,12 @@
 #!/bin/sh
 set -e
 
-# fetch-metadata emits monkcode / service-token double-base64'd to survive
-# GitHub's log masking across step boundaries. Decode here so the script sees
-# plain values.
+# Credentials arrive one of two ways:
+#  - Capsule flows: double-base64'd from fetch-metadata (survives GitHub's log
+#    masking across step boundaries) — decoded here.
+#  - Static CI/CD flows: plain MONKCODE / MONK_SERVICE_TOKEN env vars mapped
+#    straight from repo secrets — used as-is.
+# B64 variants take precedence when both are set.
 if [ -n "$MONKCODE_B64" ]; then
     MONKCODE=$(echo "$MONKCODE_B64" | base64 -di | base64 -di)
     echo "::add-mask::$MONKCODE"

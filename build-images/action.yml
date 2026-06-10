@@ -1,15 +1,22 @@
 name: "Monk Capsule — Build Images"
-description: "Build and push all images declared in MANIFEST to the per-cluster Monk registry. Runs as a composite action on the host runner (not in a container) so podman/docker can layer-build natively."
+description: "Build and push all images declared in MANIFEST to a Monk registry. Runs as a composite action on the host runner (not in a container) so podman/docker can layer-build natively. Capsule flows pass the double-base64'd password from fetch-metadata; static CI/CD flows pass a plain repo secret."
 inputs:
   registry-address:
-    description: "Per-cluster registry hostname:port (from fetch-metadata)."
+    description: "Registry hostname:port."
     required: true
   registry-username:
-    description: "Per-cluster registry username (from fetch-metadata)."
+    description: "Registry username."
     required: true
   registry-password-b64:
-    description: "Per-cluster registry password, double-base64'd (from fetch-metadata)."
-    required: true
+    description: "Registry password, double-base64'd (from fetch-metadata). Takes precedence over registry-password."
+    required: false
+  registry-password:
+    description: "Registry password, plain (typically the REGISTRY_PASSWORD repo secret). Ignored when registry-password-b64 is set."
+    required: false
+  registry-tls-verify:
+    description: "Whether to verify the registry's TLS certificate when pushing with podman. Default true."
+    required: false
+    default: "true"
 runs:
   using: composite
   steps:
@@ -26,12 +33,18 @@ runs:
         REGISTRY_ADDRESS: ${{ inputs.registry-address }}
         REGISTRY_USERNAME: ${{ inputs.registry-username }}
         REGISTRY_PASSWORD_B64: ${{ inputs.registry-password-b64 }}
+        REGISTRY_PASSWORD_PLAIN: ${{ inputs.registry-password }}
+        REGISTRY_TLS_VERIFY: ${{ inputs.registry-tls-verify }}
         PARSE_MANIFEST: ${{ github.action_path }}/../scripts/parse-manifest.sh
         BUILD_IMAGES_SCRIPT: ${{ github.action_path }}/../scripts/build-images.sh
       run: |
         set -e
-        REGISTRY_PASSWORD=$(echo "$REGISTRY_PASSWORD_B64" | base64 -di | base64 -di)
-        echo "::add-mask::$REGISTRY_PASSWORD"
+        if [ -n "$REGISTRY_PASSWORD_B64" ]; then
+          REGISTRY_PASSWORD=$(echo "$REGISTRY_PASSWORD_B64" | base64 -di | base64 -di)
+          echo "::add-mask::$REGISTRY_PASSWORD"
+        else
+          REGISTRY_PASSWORD="$REGISTRY_PASSWORD_PLAIN"
+        fi
         export REGISTRY_PASSWORD
         if [ -z "$REGISTRY_ADDRESS" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ]; then
           echo "::error::Registry credentials are required"
