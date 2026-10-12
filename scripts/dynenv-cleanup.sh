@@ -187,27 +187,35 @@ set_capsule_status destroyed
 # ============================================================================
 printf "${GREEN}Cleaning up backend records...${NC}\n"
 
-# 3a. Delete cluster record
+# Calls one backend DELETE and says what came back when it isn't 2xx, rather
+# than `curl -f` swallowing the reason.
+backend_delete() {
+    label="$1"; url="$2"
+    code=$(curl -s -o /tmp/backend_delete.json -w "%{http_code}" -X DELETE "$url" -H "$AUTH_HEADER") || code=000
+    if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+        printf "${YELLOW}  Warning: $label failed (HTTP $code): %s${NC}\n" "$(head -c 300 /tmp/backend_delete.json 2>/dev/null)"
+        return 1
+    fi
+}
+
+# 3a. Unlink cluster from environment. First, so the cluster record is no
+# longer referenced when it is deleted.
+printf "  Unlinking cluster from environment...\n"
+backend_delete "unlink (may already be unlinked)" \
+    "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME/cluster" || true
+
+# 3b. Delete cluster record
 if [ -n "$CLUSTER_ID" ]; then
     printf "  Deleting cluster record...\n"
-    curl -sf -X DELETE \
-        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/clusters/$CLUSTER_ID" \
-        -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: cluster record delete failed${NC}\n"
+    backend_delete "cluster record delete" \
+        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/clusters/$CLUSTER_ID" || true
 fi
-
-# 3b. Unlink cluster from environment
-printf "  Unlinking cluster from environment...\n"
-curl -sf -X DELETE \
-    "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME/cluster" \
-    -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: unlink failed (may already be unlinked)${NC}\n"
-
 
 # 3c. Delete environment only for permanent cleanup
 if [ "$CAPSULE_DELETE_RECORDS" = "true" ]; then
     printf "  Deleting environment...\n"
-    curl -sf -X DELETE \
-        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME" \
-        -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: environment delete failed${NC}\n"
+    backend_delete "environment delete" \
+        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME" || true
 else
     printf "  Keeping environment record for future reprovision.\n"
 fi
