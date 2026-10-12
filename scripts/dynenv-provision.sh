@@ -171,6 +171,37 @@ cleanup_on_failure() {
 }
 trap cleanup_on_failure ERR
 
+# True when the connected cluster reports the ingress plugin as enabled.
+ingress_enabled() {
+    monk --json plugins list 2>/dev/null \
+        | jq -e '[.plugins[]? | select(.name == "ingress" and .enabled == true)] | length > 0' >/dev/null 2>&1
+}
+
+# Enable the ingress plugin, retrying while the system templates sync on a
+# fresh cluster (too early and monkd answers "templates/monk/system/traefik is
+# not a valid runnable"). `plugins enable` exits 0 even when the daemon answers
+# success:false, so the result is confirmed with `plugins list`. Idempotent: a
+# reused cluster that already has ingress returns at once.
+ensure_ingress() {
+    if ingress_enabled; then
+        printf "${GREEN}Ingress plugin already enabled.${NC}\n"
+        return 0
+    fi
+    attempt=1
+    while [ "$attempt" -le 8 ]; do
+        printf "${GREEN}Enabling ingress plugin (attempt $attempt/8)...${NC}\n"
+        monk --json plugins enable ingress >/tmp/ingress_enable.json 2>/tmp/ingress_enable.err || true
+        if ingress_enabled; then
+            printf "${GREEN}Ingress plugin enabled.${NC}\n"
+            return 0
+        fi
+        cat /tmp/ingress_enable.json /tmp/ingress_enable.err 2>/dev/null || true
+        attempt=$((attempt + 1))
+        if [ "$attempt" -le 8 ]; then sleep 20; fi
+    done
+    return 1
+}
+
 # ============================================================================
 # I.A -- Reconcile environment and cluster (idempotent)
 # ============================================================================
@@ -379,9 +410,7 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
         fi
         printf "${GREEN}Cluster ready. ID: $CLUSTER_ID${NC}\n"
 
-        # A.5.1 Enable ingress plugin
-        printf "${GREEN}Enabling ingress plugin...${NC}\n"
-        monk plugins enable ingress || printf "${YELLOW}Warning: Failed to enable ingress plugin (non-blocking)${NC}\n"
+        # Ingress is ensured at the end (B.4), for new and reused clusters alike.
         REGISTRY_SETUP_REQUIRED=true
     fi
 
@@ -605,6 +634,16 @@ sync_cluster_users "$CLUSTER_ID" "$MONKCODE"
 
 # B.3 Registry credentials are stored as cluster secrets (step A.6.6),
 # and retrieved via monk secrets get in the fetch-metadata workflow job.
+
+# B.4 Ingress. Without it the preview has no route, so the capsule isn't ready.
+# This runs after the cluster is registered, so a failure keeps the cluster and
+# a re-run reuses it and retries the enable.
+if ! ensure_ingress; then
+    printf "${RED}Error: The ingress plugin could not be enabled, so the preview would not be reachable.${NC}\n"
+    printf "${RED}The cluster is kept. Re-run this workflow to retry.${NC}\n"
+    monk cluster exit --force || true
+    exit 1
+fi
 
 # ============================================================================
 # I.C -- Exit cluster to avoid runner remaining as a connected peer
