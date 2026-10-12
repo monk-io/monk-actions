@@ -64,11 +64,27 @@ fi
 MONKCODE=$(jq -r '.cluster.monkcode // empty' /tmp/env_response.json)
 CLUSTER_ID=$(jq -r '.cluster.clusterId // empty' /tmp/env_response.json)
 
-# Best-effort: mark capsule metadata as destroyed
-NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-curl -sf -X PATCH "$ENV_PATH" \
-    -H "$AUTH_HEADER" -H "Content-Type: application/json" \
-    -d "{\"settings\":{\"capsule\":{\"source\":\"dynenv\",\"status\":\"destroyed\",\"lastDestroyedAt\":\"$NOW_UTC\",\"updatedAt\":\"$NOW_UTC\"}}}" > /dev/null 2>&1 || true
+# Status is written once the outcome is known (see dynenv-cleanup.sh).
+set_capsule_status() {
+    NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    if [ "$1" = "destroyed" ]; then
+        PAYLOAD=$(jq -n --arg now "$NOW_UTC" \
+            '{settings:{capsule:{source:"dynenv",status:"destroyed",lastDestroyedAt:$now,lastError:null,updatedAt:$now}}}')
+    else
+        PAYLOAD=$(jq -n --arg now "$NOW_UTC" --arg err "$2" \
+            '{settings:{capsule:{source:"dynenv",status:"failed",lastError:$err,updatedAt:$now}}}')
+    fi
+    curl -sf -X PATCH "$ENV_PATH" \
+        -H "$AUTH_HEADER" -H "Content-Type: application/json" \
+        -d "$PAYLOAD" > /dev/null 2>&1 || true
+}
+on_exit() {
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        set_capsule_status failed "Destroy failed: the workload may still be running. Re-run destroy."
+    fi
+}
+trap on_exit EXIT
 
 if [ -z "$MONKCODE" ]; then
     printf "${YELLOW}No cluster linked. Cleaning up backend records only.${NC}\n"
@@ -111,6 +127,8 @@ else
         done
     fi
 fi
+
+set_capsule_status destroyed
 
 # ============================================================================
 # Step 3: Clean up backend records (DO NOT delete cluster — it's shared)
