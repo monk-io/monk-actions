@@ -1,9 +1,10 @@
 #!/bin/sh
 set +e
 
-# Determine a preview URL for the deployed capsule, writing `url=<value>` to
-# $GITHUB_OUTPUT when found. Best-effort — emits nothing (and exits 0) if a
-# URL cannot be determined.
+# Determine a preview URL for the deployed capsule, writing `preview-url=<value>`
+# (and the older `url=<value>`) to $GITHUB_OUTPUT when found, and the bare URL to
+# /tmp/preview_url for preview-health.sh. Best-effort — emits nothing (and exits
+# 0) if a URL cannot be determined.
 #
 # Required env: MONKCODE, MONK_SERVICE_TOKEN, MONK_WORKLOAD
 # Optional env: MONK_REPO (cluster mode)
@@ -61,7 +62,10 @@ if [ -z "$PREVIEW_URL" ]; then
 fi
 
 if [ -n "$PREVIEW_URL" ]; then
+    # The action declares `preview-url`; `url` is kept for workflows that read it.
+    echo "preview-url=$PREVIEW_URL" >> "$GITHUB_OUTPUT"
     echo "url=$PREVIEW_URL" >> "$GITHUB_OUTPUT"
+    printf '%s' "$PREVIEW_URL" > /tmp/preview_url
     echo "Preview URL: $PREVIEW_URL"
 else
     echo "::warning::Could not determine preview URL from endpoints or peers"
