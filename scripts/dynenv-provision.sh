@@ -159,17 +159,32 @@ export MONK_CLI_NO_COLOR=true
 export MONK_NO_INTERACTIVE=true
 
 CREATED_CLUSTER=false
+CLUSTER_REGISTERED=false
 
+# Runs on every exit. A cluster this run created but never registered has no
+# record, so nothing (not even the destroy workflow) can find it later: nuke it
+# now while this container is still joined to it. A registered one is kept for
+# the destroy workflow, which can reach it through its record.
+# On EXIT rather than ERR: an explicit `exit 1` (e.g. the backend refusing the
+# registration over a plan limit) does not fire ERR, and used to leave the
+# droplet running with nothing tracking it.
 cleanup_on_failure() {
-    if [ "$CREATED_CLUSTER" = "true" ]; then
-        printf "${YELLOW}Provisioning failed, attempting cleanup of newly created cluster...${NC}\n"
-        monk cluster nuke --force --remove-volumes --remove-snapshots 2>/dev/null || true
-        printf "${YELLOW}Cleanup attempted.${NC}\n"
+    rc=$?
+    [ "$rc" -eq 0 ] && return 0
+    if [ "$CREATED_CLUSTER" != "true" ]; then
+        printf "${YELLOW}Provisioning failed. No new cluster was created, so there is nothing to clean up.${NC}\n"
+    elif [ "$CLUSTER_REGISTERED" = "true" ]; then
+        printf "${YELLOW}Provisioning failed. Cluster $CLUSTER_NAME is registered and kept; run the workflow with action=destroy to remove it.${NC}\n"
     else
-        printf "${YELLOW}Provisioning failed. Skipping destructive cleanup because no new cluster was created.${NC}\n"
+        printf "${YELLOW}Provisioning failed before cluster $CLUSTER_NAME was registered. Deleting it so it does not keep running untracked...${NC}\n"
+        if monk cluster nuke --force --remove-volumes --remove-snapshots; then
+            printf "${GREEN}Cluster $CLUSTER_NAME deleted.${NC}\n"
+        else
+            printf "${RED}Could not delete cluster $CLUSTER_NAME. Delete its machines in your $CLOUD_PROVIDER account by hand.${NC}\n"
+        fi
     fi
 }
-trap cleanup_on_failure ERR
+trap cleanup_on_failure EXIT
 
 # True when the connected cluster reports the ingress plugin as enabled.
 ingress_enabled() {
@@ -541,6 +556,7 @@ if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
     exit 1
 fi
 printf "${GREEN}Cluster registered.${NC}\n"
+CLUSTER_REGISTERED=true
 
 # B.2 Ensure environment exists and is linked to the resolved cluster
 CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
