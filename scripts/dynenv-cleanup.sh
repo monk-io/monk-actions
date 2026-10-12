@@ -69,28 +69,61 @@ fi
 MONKCODE=$(jq -r '.cluster.monkcode // empty' /tmp/env_response.json)
 CLUSTER_ID=$(jq -r '.cluster.clusterId // empty' /tmp/env_response.json)
 
-# Best-effort: mark capsule metadata as down before deleting or deprovisioning.
-NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-CAPSULE_DESTROY_PAYLOAD=$(jq -n \
-    --arg branch "$ENVIRONMENT_NAME" \
-    --arg status "destroyed" \
-    --arg now "$NOW_UTC" \
-    '{settings:{capsule:{source:"dynenv",branch:$branch,status:$status,lastDestroyedAt:$now,updatedAt:$now}}}')
-curl -sf -X PATCH \
-    "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME" \
-    -H "$AUTH_HEADER" \
-    -H "Content-Type: application/json" \
-    -d "$CAPSULE_DESTROY_PAYLOAD" > /dev/null 2>&1 || true
+# Capsule status is written once the outcome is known: "destroyed" after the
+# cluster and records are gone, "failed" (with the reason) if any step fails,
+# so a capsule whose machine is still running is never shown as destroyed.
+ENV_URL="$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME"
+set_capsule_status() {
+    NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    if [ "$1" = "destroyed" ]; then
+        PAYLOAD=$(jq -n --arg branch "$ENVIRONMENT_NAME" --arg now "$NOW_UTC" \
+            '{settings:{capsule:{source:"dynenv",branch:$branch,status:"destroyed",lastDestroyedAt:$now,lastError:null,updatedAt:$now}}}')
+    else
+        PAYLOAD=$(jq -n --arg branch "$ENVIRONMENT_NAME" --arg now "$NOW_UTC" --arg err "$2" \
+            '{settings:{capsule:{source:"dynenv",branch:$branch,status:"failed",lastError:$err,updatedAt:$now}}}')
+    fi
+    curl -sf -X PATCH "$ENV_URL" \
+        -H "$AUTH_HEADER" \
+        -H "Content-Type: application/json" \
+        -d "$PAYLOAD" > /dev/null 2>&1 || true
+}
+on_exit() {
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        set_capsule_status failed "Destroy failed: the cluster may still be running. Re-run destroy or delete it from Monk."
+    fi
+}
+trap on_exit EXIT
+
+# True once the cluster has refused a fresh connection 3 times in a row.
+cluster_gone() {
+    misses=0
+    tries=0
+    while [ "$tries" -lt 12 ]; do
+        tries=$((tries + 1))
+        if MONK_SOCKET="monkcode://$MONKCODE" monk --json cluster peers >/dev/null 2>&1; then
+            misses=0
+        else
+            misses=$((misses + 1))
+            if [ "$misses" -ge 3 ]; then return 0; fi
+        fi
+        sleep 15
+    done
+    return 1
+}
 
 if [ -z "$MONKCODE" ]; then
     printf "${YELLOW}No cluster linked to environment. Cleaning up backend records only.${NC}\n"
 else
     # ============================================================================
-    # Step 2: Start local monkd, join cluster, then nuke
+    # Step 2: Nuke the cluster
     # ============================================================================
-    # We must go through a local monkd so that nuke can properly tear down all
-    # remote nodes. Connecting directly via monkcode:// would leave the node we
-    # happen to talk to dangling.
+    # First through monkcode:// with no local daemon, which is how Monk's own
+    # cluster delete does it. Joining as a peer from the runner fails its
+    # "check user credentials" step (ENG-908), so join-then-nuke is only the
+    # fallback. Either way the cluster counts as gone only once it stops
+    # answering: the nuke's own stream breaks when the node it talks to dies,
+    # so its exit code alone says nothing.
     printf "${GREEN}Minting JIT CLI token for cleanup...${NC}\n"
     CLI_PERMS="[\"manage:/projects/$MONK_PROJECT_SLUG/clusters/**\"]"
     MONK_JIT_CLI_TOKEN=$(mint_jit_token "$CLI_PERMS" "cleanup-$CLUSTER_NAME" 60)
@@ -100,6 +133,19 @@ else
     fi
     export MONK_SERVICE_TOKEN="$MONK_JIT_CLI_TOKEN"
 
+    printf "${GREEN}Nuking cluster $CLUSTER_NAME via monkcode...${NC}\n"
+    MONK_SOCKET="monkcode://$MONKCODE" monk cluster nuke --force --remove-volumes --remove-snapshots \
+        || printf "${YELLOW}The nuke command exited with an error; checking whether the cluster is gone...${NC}\n"
+    if cluster_gone; then
+        printf "${GREEN}Cluster nuked.${NC}\n"
+        NUKED=true
+    else
+        printf "${YELLOW}The cluster still answers. Retrying through a local daemon joined to it...${NC}\n"
+        NUKED=false
+    fi
+fi
+
+if [ -n "$MONKCODE" ] && [ "$NUKED" != "true" ]; then
     printf "${GREEN}Starting local Monk daemon...${NC}\n"
     monkd > /tmp/monkd.log 2>&1 &
     printf "${GREEN}Waiting for daemon to initialize (up to 60s)...${NC}\n"
@@ -123,9 +169,16 @@ else
     monk cluster join --monkcode "$MONKCODE" --local-name "cleanup-runner-$$"
 
     printf "${GREEN}Nuking cluster: $CLUSTER_NAME...${NC}\n"
-    monk cluster nuke --force --remove-volumes --remove-snapshots
+    monk cluster nuke --force --remove-volumes --remove-snapshots || true
+    if ! cluster_gone; then
+        printf "${RED}Error: Cluster $CLUSTER_NAME still answers after the nuke.${NC}\n"
+        exit 1
+    fi
     printf "${GREEN}Cluster nuked.${NC}\n"
 fi
+
+# The cluster is gone (or there was none); record cleanup below is best-effort.
+set_capsule_status destroyed
 
 # ============================================================================
 # Step 3: Clean up backend records
@@ -134,27 +187,35 @@ fi
 # ============================================================================
 printf "${GREEN}Cleaning up backend records...${NC}\n"
 
-# 3a. Delete cluster record
+# Calls one backend DELETE and says what came back when it isn't 2xx, rather
+# than `curl -f` swallowing the reason.
+backend_delete() {
+    label="$1"; url="$2"
+    code=$(curl -s -o /tmp/backend_delete.json -w "%{http_code}" -X DELETE "$url" -H "$AUTH_HEADER") || code=000
+    if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+        printf "${YELLOW}  Warning: $label failed (HTTP $code): %s${NC}\n" "$(head -c 300 /tmp/backend_delete.json 2>/dev/null)"
+        return 1
+    fi
+}
+
+# 3a. Unlink cluster from environment. First, so the cluster record is no
+# longer referenced when it is deleted.
+printf "  Unlinking cluster from environment...\n"
+backend_delete "unlink (may already be unlinked)" \
+    "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME/cluster" || true
+
+# 3b. Delete cluster record
 if [ -n "$CLUSTER_ID" ]; then
     printf "  Deleting cluster record...\n"
-    curl -sf -X DELETE \
-        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/clusters/$CLUSTER_ID" \
-        -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: cluster record delete failed${NC}\n"
+    backend_delete "cluster record delete" \
+        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/clusters/$CLUSTER_ID" || true
 fi
-
-# 3b. Unlink cluster from environment
-printf "  Unlinking cluster from environment...\n"
-curl -sf -X DELETE \
-    "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME/cluster" \
-    -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: unlink failed (may already be unlinked)${NC}\n"
-
 
 # 3c. Delete environment only for permanent cleanup
 if [ "$CAPSULE_DELETE_RECORDS" = "true" ]; then
     printf "  Deleting environment...\n"
-    curl -sf -X DELETE \
-        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME" \
-        -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: environment delete failed${NC}\n"
+    backend_delete "environment delete" \
+        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/projects/$MONK_PROJECT_SLUG/environments/$ENVIRONMENT_NAME" || true
 else
     printf "  Keeping environment record for future reprovision.\n"
 fi

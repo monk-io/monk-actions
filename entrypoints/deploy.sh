@@ -24,4 +24,8 @@ DEPLOY_RC=$?
 # Best-effort preview URL extraction. Never fails the action.
 /opt/monk-actions/scripts/preview-url.sh || true
 
+# A deploy whose preview doesn't answer is not a success (see the script for
+# when this fails the run and when it only warns).
+/opt/monk-actions/scripts/preview-health.sh || exit 1
+
 exit $DEPLOY_RC

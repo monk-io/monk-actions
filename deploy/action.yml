@@ -33,6 +33,14 @@ inputs:
     description: "Tag identifying which peers form the capsule pool (cluster mode)."
     required: false
     default: "capsule-pool"
+  health-check-path:
+    description: "Path on the preview URL that must answer 2xx/3xx before the deploy succeeds (e.g. /health). Empty: the preview root is probed and a dead preview is only a warning."
+    required: false
+    default: ""
+  health-check-timeout:
+    description: "Seconds to wait for health-check-path to answer."
+    required: false
+    default: "300"
 outputs:
   preview-url:
     description: "Best-effort preview URL for the deployed workload. Empty if it could not be determined."
@@ -50,6 +58,8 @@ runs:
     BRANCH_TAG: ${{ inputs.branch-tag }}
     CAPSULE_MODE: ${{ inputs.capsule-mode }}
     PEER_POOL_TAG: ${{ inputs.peer-pool-tag }}
+    HEALTH_CHECK_PATH: ${{ inputs.health-check-path }}
+    HEALTH_CHECK_TIMEOUT: ${{ inputs.health-check-timeout }}
     MONK_REPO: ${{ inputs.capsule-mode == 'cluster' && inputs.environment-name || '' }}
 branding:
   icon: box
