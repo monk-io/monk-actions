@@ -17,6 +17,18 @@ inputs:
     description: "Whether to verify the registry's TLS certificate when pushing with podman. Default true."
     required: false
     default: "true"
+  cache-repo:
+    description: "Optional repository for a shared podman layer cache (e.g. ghcr.io/org/project-buildcache). Every branch reads and writes it, so dependency layers built once are reused by later builds on any branch."
+    required: false
+    default: ""
+  cache-username:
+    description: "Username for the cache-repo registry (e.g. github.actor for ghcr.io)."
+    required: false
+    default: ""
+  cache-password:
+    description: "Password or token for the cache-repo registry (e.g. GITHUB_TOKEN with packages: write for ghcr.io)."
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -35,6 +47,9 @@ runs:
         REGISTRY_PASSWORD_B64: ${{ inputs.registry-password-b64 }}
         REGISTRY_PASSWORD_PLAIN: ${{ inputs.registry-password }}
         REGISTRY_TLS_VERIFY: ${{ inputs.registry-tls-verify }}
+        CACHE_REPO: ${{ inputs.cache-repo }}
+        CACHE_USERNAME: ${{ inputs.cache-username }}
+        CACHE_PASSWORD: ${{ inputs.cache-password }}
         PARSE_MANIFEST: ${{ github.action_path }}/../scripts/parse-manifest.sh
         BUILD_IMAGES_SCRIPT: ${{ github.action_path }}/../scripts/build-images.sh
       run: |

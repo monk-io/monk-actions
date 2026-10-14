@@ -26,6 +26,25 @@ if [ -z "$REGISTRY_ADDRESS" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_
     echo "Required: REGISTRY_ADDRESS, REGISTRY_USERNAME, REGISTRY_PASSWORD"
 fi
 
+# Optional shared layer cache (podman only). CACHE_REPO is a repository such as
+# ghcr.io/org/project-buildcache; CACHE_USERNAME/CACHE_PASSWORD log in to its
+# registry. A failed login disables the cache rather than failing the build.
+if [ -n "$CACHE_REPO" ]; then
+    if ! command -v podman >/dev/null 2>&1; then
+        echo "Warning: layer cache needs podman; building without it"
+        CACHE_REPO=""
+    elif [ -n "$CACHE_USERNAME" ] && [ -n "$CACHE_PASSWORD" ]; then
+        if echo "$CACHE_PASSWORD" | podman login --username "$CACHE_USERNAME" --password-stdin "${CACHE_REPO%%/*}"; then
+            echo "Using layer cache $CACHE_REPO"
+        else
+            echo "Warning: login to ${CACHE_REPO%%/*} failed; building without layer cache"
+            CACHE_REPO=""
+        fi
+    else
+        echo "Using layer cache $CACHE_REPO (no login)"
+    fi
+fi
+
 # Function to build a single image
 build_image() {
     local IMAGE_TAG="$1"
@@ -73,7 +92,15 @@ build_image() {
     # Build using podman first (better insecure registry support), fallback to docker
     if command -v podman >/dev/null 2>&1; then
         echo "Using podman for build..."
-        podman build -t "$tag" -f "$DOCKERFILE_PATH" "$BUILD_CONTEXT"
+        # With CACHE_REPO set, intermediate layers are pulled from and pushed
+        # to that repository, so builds on other runners and branches reuse
+        # them (e.g. a project's dependency-build stages).
+        if [ -n "$CACHE_REPO" ]; then
+            podman build --layers --cache-from "$CACHE_REPO" --cache-to "$CACHE_REPO" \
+                -t "$tag" -f "$DOCKERFILE_PATH" "$BUILD_CONTEXT"
+        else
+            podman build -t "$tag" -f "$DOCKERFILE_PATH" "$BUILD_CONTEXT"
+        fi
 
         # Push to registry if credentials are provided
         if [ -n "$REGISTRY_ADDRESS" ] && [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]; then
