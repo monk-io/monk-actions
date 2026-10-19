@@ -54,6 +54,11 @@ sync_cluster_users() {
     local cluster_id="$1"
     local monkcode="$2"
 
+    # A personal account has no members route and no teammates to sync.
+    if [ "$MONK_API_PREFIX" = "personal" ]; then
+        return 0
+    fi
+
     if [ -z "$cluster_id" ] || [ -z "$monkcode" ]; then
         printf "${YELLOW}Skipping cluster user sync: cluster ID or monkcode is missing.${NC}\n"
         return 0
