@@ -49,6 +49,33 @@ if [ -z "$MONK_JIT_CLI_TOKEN" ] || [ "$MONK_JIT_CLI_TOKEN" = "null" ]; then
 fi
 printf "${GREEN}JIT CLI token minted.${NC}\n"
 
+# Stops before a cloud machine is created when the plan would refuse to register its cluster or
+# environment, instead of finding out afterwards. Only the platform's own answer stops the run:
+# one that can't be read (an organization, an older platform, no network) says nothing.
+# $1: "true" when a new cluster is about to be created, $2: "true" when a new environment will be.
+check_plan_allows_capsule() {
+    local new_cluster="$1" new_env="$2" code limit count
+    code=$(curl -s -o /tmp/entitlements.json -w "%{http_code}" \
+        "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/entitlements" -H "$AUTH_HEADER") || return 0
+    [ "$code" = "200" ] || return 0
+    if [ "$new_cluster" = "true" ]; then
+        limit=$(jq -r '.clusterLimit // empty' /tmp/entitlements.json)
+        count=$(jq -r '.clusters // 0' /tmp/entitlements.json)
+        if [ -n "$limit" ] && [ "$count" -ge "$limit" ]; then
+            printf "${RED}Error: Your plan allows $limit cluster(s) and this account already has $count, so a capsule can't get a cluster of its own. Nothing was created. Remove a cluster or upgrade the plan, then run the workflow again.${NC}\n"
+            exit 1
+        fi
+    fi
+    if [ "$new_env" = "true" ]; then
+        limit=$(jq -r '.environmentLimit // empty' /tmp/entitlements.json)
+        count=$(jq -r '.environments // 0' /tmp/entitlements.json)
+        if [ -n "$limit" ] && [ "$count" -ge "$limit" ]; then
+            printf "${RED}Error: Your plan allows $limit environment(s) and this account already has $count, so a capsule can't get an environment of its own. Nothing was created. Remove an environment or upgrade the plan, then run the workflow again.${NC}\n"
+            exit 1
+        fi
+    fi
+}
+
 # Best-effort: sync backend cluster members into Monk cluster users.
 sync_cluster_users() {
     local cluster_id="$1"
@@ -296,6 +323,13 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] && [ "$ENV_EXISTS" != "true" ]; then
     else
         printf "${YELLOW}Warning: Could not list org clusters (HTTP $CLUSTERS_HTTP_CODE). Continuing with fresh provisioning.${NC}\n"
     fi
+fi
+
+# A new cluster is about to be created: check the plan first.
+if [ "$USE_EXISTING_CLUSTER" != "true" ]; then
+    new_env=true
+    [ "$ENV_EXISTS" = "true" ] && new_env=false
+    check_plan_allows_capsule true "$new_env"
 fi
 
 if [ "$USE_EXISTING_CLUSTER" = "true" ]; then
