@@ -191,10 +191,13 @@ cleanup_on_failure() {
 }
 trap cleanup_on_failure EXIT
 
-# True when the connected cluster reports the ingress plugin as enabled.
+# True when the connected cluster reports the ingress plugin as enabled. The CLI prints its JSON on
+# stderr, so both streams are read; no output is "not enabled" (jq -e exits 0 on empty input).
 ingress_enabled() {
-    monk --json plugins list 2>/dev/null \
-        | jq -e '[.plugins[]? | select(.name == "ingress" and .enabled == true)] | length > 0' >/dev/null 2>&1
+    plugins_out=$(monk --json plugins list 2>&1 | tail -n 1)
+    [ -n "$plugins_out" ] || return 1
+    printf '%s' "$plugins_out" \
+        | jq -e '[(.data.plugins // .plugins // [])[] | select(.name == "ingress" and .enabled == true)] | length > 0' >/dev/null 2>&1
 }
 
 # Enable the ingress plugin, retrying while the system templates sync on a
