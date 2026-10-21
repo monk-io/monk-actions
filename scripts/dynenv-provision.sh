@@ -118,6 +118,7 @@ sync_cluster_users() {
     added=0
     updated=0
     removed=0
+    failed=""
 
     while IFS="$(printf '\t')" read -r email role; do
         [ -n "$email" ] || continue
@@ -128,6 +129,7 @@ sync_cluster_users() {
             else
                 printf "${YELLOW}Warning: Failed to add cluster user $email. Continuing.${NC}\n"
                 cat /tmp/cluster_user_add.err 2>/dev/null || true
+                failed="$failed add:$email"
             fi
         elif [ "$present_role" != "$role" ] && [ "$present_role" != "owner" ]; then
             if monk --json --no-interactive --nofancy --nocolor -s "monkcode://$monkcode" cluster users add --email "$email" --role "$role" > /tmp/cluster_user_update.json 2>/tmp/cluster_user_update.err; then
@@ -135,6 +137,7 @@ sync_cluster_users() {
             else
                 printf "${YELLOW}Warning: Failed to update cluster user $email. Continuing.${NC}\n"
                 cat /tmp/cluster_user_update.err 2>/dev/null || true
+                failed="$failed update:$email"
             fi
         fi
     done < /tmp/cluster_users_desired.tsv
@@ -150,11 +153,17 @@ sync_cluster_users() {
             else
                 printf "${YELLOW}Warning: Failed to remove cluster user $email. Continuing.${NC}\n"
                 cat /tmp/cluster_user_remove.err 2>/dev/null || true
+                failed="$failed remove:$email"
             fi
         fi
     done < /tmp/cluster_users_present.tsv
 
-    printf "${GREEN}Cluster user sync complete (+%s ~%s -%s).${NC}\n" "$added" "$updated" "$removed"
+    if [ -n "$failed" ]; then
+        printf "${YELLOW}Cluster user sync incomplete (+%s ~%s -%s). Not done:%s. The next push to this branch retries.${NC}\n" \
+            "$added" "$updated" "$removed" "$failed"
+    else
+        printf "${GREEN}Cluster user sync complete (+%s ~%s -%s).${NC}\n" "$added" "$updated" "$removed"
+    fi
 }
 
 # Configure Monk CLI for non-interactive CI usage
@@ -654,8 +663,6 @@ else
     printf "${GREEN}Environment created and linked to cluster.${NC}\n"
 fi
 
-sync_cluster_users "$CLUSTER_ID" "$MONKCODE"
-
 # B.3 Registry credentials are stored as cluster secrets (step A.6.6),
 # and retrieved via monk secrets get in the fetch-metadata workflow job.
 
@@ -668,6 +675,10 @@ if ! ensure_ingress; then
     monk cluster exit --force || true
     exit 1
 fi
+
+# B.5 Members. Last, so the preview doesn't wait on one CLI call per member; it never fails the run,
+# and the next push to the branch syncs whoever is still missing.
+sync_cluster_users "$CLUSTER_ID" "$MONKCODE"
 
 # ============================================================================
 # I.C -- Exit cluster to avoid runner remaining as a connected peer
