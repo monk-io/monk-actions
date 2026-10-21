@@ -15,8 +15,14 @@ export MONK_CLI_NO_COLOR=true
 
 PREVIEW_URL=""
 
+# A branch routed on its own host (see dynenv-deploy.sh) is only reachable there; the bare node
+# domain would show another branch.
+if [ -s /tmp/capsule_host ]; then
+    PREVIEW_URL="https://$(cat /tmp/capsule_host)"
+fi
+
 # Prefer explicit workload namespace endpoints over peer node domain inference.
-if [ -n "$MONK_WORKLOAD" ] && echo "$MONK_WORKLOAD" | grep -q '/'; then
+if [ -z "$PREVIEW_URL" ] && [ -n "$MONK_WORKLOAD" ] && echo "$MONK_WORKLOAD" | grep -q '/'; then
     WORKLOAD_NAMESPACE="${MONK_WORKLOAD%/*}"
     MONK_REPO="${MONK_REPO:-}"
     if [ -n "$MONK_REPO" ]; then

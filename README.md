@@ -54,6 +54,29 @@ jobs:
           MONK_ORG_SLUG: ${{ vars.MONK_ORG_SLUG }}
 ```
 
+Shared cluster (`capsule-mode: cluster`): every branch deploys to the same cluster, so a web service's
+route has to differ per branch. When a template mentions `capsule-host`, `deploy` sets that variable
+to `<environment>.<domain of the first node in the pool>` and the preview URL is that host. Declare it
+on the stack and route on it:
+
+```yaml
+stack:
+  defines: group
+  variables:
+    capsule-host:
+      type: string
+      value: ""
+```
+
+```yaml
+ingress-routes:
+  web:
+    host: <- $capsule-host
+```
+
+The name must resolve (the platform answers for any subdomain of a node domain) and, for `https`, be
+covered by the node domain's certificate.
+
 Static CI/CD deploy (no capsule environments):
 
 ```yaml
