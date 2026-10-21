@@ -72,7 +72,13 @@ stack:
 ingress-routes:
   web:
     host: <- $capsule-host
+    path-prefix: /
 ```
+
+Keep the `path-prefix`. Anywhere `capsule-host` isn't passed (a production deploy, or a cloud-mode
+capsule) the variable stays `""`, the route is just `PathPrefix(/)` and matches every host, as it did
+before; a route with only an empty host has no rule at all and is dropped. A production deploy can
+instead set the variable's default to its own domain.
 
 The name must resolve (the platform answers for any subdomain of a node domain) and, for `https`, be
 covered by the node domain's certificate.
