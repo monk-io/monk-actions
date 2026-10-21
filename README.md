@@ -54,34 +54,36 @@ jobs:
           MONK_ORG_SLUG: ${{ vars.MONK_ORG_SLUG }}
 ```
 
-Shared cluster (`capsule-mode: cluster`): every branch deploys to the same cluster, so a web service's
-route has to differ per branch. When a template mentions `capsule-host`, `deploy` sets that variable
-to `<environment>.<domain of the first node in the pool>` and the preview URL is that host. Declare it
-on the stack and route on it:
+Routing on a host. A template can take the host of its web service from an `ingress-host` variable,
+so the same template serves a real domain in production or dev and a generated one for each branch:
 
 ```yaml
 stack:
   defines: group
   variables:
-    capsule-host:
+    ingress-host:
       type: string
-      value: ""
+      value: ""          # or the real domain, for a deploy that doesn't set it
 ```
 
 ```yaml
 ingress-routes:
   web:
-    host: <- $capsule-host
+    host: <- $ingress-host
     path-prefix: /
 ```
 
-Keep the `path-prefix`. Anywhere `capsule-host` isn't passed (a production deploy, or a cloud-mode
-capsule) the variable stays `""`, the route is just `PathPrefix(/)` and matches every host, as it did
-before; a route with only an empty host has no rule at all and is dropped. A production deploy can
-instead set the variable's default to its own domain.
+On a shared cluster (`capsule-mode: cluster`) every branch deploys to the same cluster, so a web
+service's route has to differ per branch. When a template mentions `ingress-host`, `deploy` sets it to
+`<environment>.<domain of the first node in the pool>`, and the preview URL is that host. Everywhere
+else (a production or dev deploy, a cloud-mode capsule) the variable keeps the value the template, or
+the deploy, gives it.
 
-The name must resolve (the platform answers for any subdomain of a node domain) and, for `https`, be
-covered by the node domain's certificate.
+Keep the `path-prefix`. With the variable empty the route is just `PathPrefix(/)` and matches every
+host, as it did before; a route with only an empty host has no rule at all and is dropped.
+
+A generated name must resolve (the platform answers for any subdomain of a node domain) and, for
+`https`, be covered by the node domain's certificate.
 
 Static CI/CD deploy (no capsule environments):
 

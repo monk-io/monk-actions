@@ -46,15 +46,15 @@ if [ ! -f "MANIFEST" ]; then
     exit 1
 fi
 
-# Whether any template in the checkout mentions `capsule-host` (BusyBox grep has no --include).
-uses_capsule_host() {
+# Whether any template in the checkout mentions `ingress-host` (BusyBox grep has no --include).
+uses_ingress_host() {
     find . -path ./.git -prune -o -type f \( -name '*.yaml' -o -name '*.yml' \) \
-        -exec grep -l 'capsule-host' {} + 2>/dev/null | grep -q .
+        -exec grep -l 'ingress-host' {} + 2>/dev/null | grep -q .
 }
 
 # <environment>.<domain of the first node in the pool>, or nothing when there is no such node or the
 # environment isn't usable as a single lowercase DNS label.
-capsule_host() {
+ingress_host() {
     label=$(printf '%s' "$ENVIRONMENT_NAME" | tr 'A-Z' 'a-z')
     case "$label" in
         ""|-*|*-|*[!a-z0-9-]*) return 0 ;;
@@ -73,18 +73,18 @@ if [ -n "$MONK_REPO" ]; then
     printf "${GREEN}Loading MANIFEST into repo '$MONK_REPO'...${NC}\n"
     monk load --repo "$MONK_REPO" MANIFEST
 
-    # Branches share the pool's node domain, so a project that declares `capsule-host` is told its
-    # own host under it, <environment>.<node domain>, to route on (`host: <- $capsule-host`).
+    # Branches share the pool's node domain, so a project that uses an `ingress-host` variable is told
+    # its own host under it, <environment>.<node domain>, to route on (`host: <- $ingress-host`).
     # Only passed when the project mentions it: setting a variable it doesn't declare may fail.
     HOST_ARGS=""
-    if uses_capsule_host; then
-        CAPSULE_HOST=$(capsule_host)
-        if [ -n "$CAPSULE_HOST" ]; then
-            printf "${GREEN}Branch host: $CAPSULE_HOST${NC}\n"
-            printf '%s' "$CAPSULE_HOST" > /tmp/capsule_host
-            HOST_ARGS="-s capsule-host=$CAPSULE_HOST"
+    if uses_ingress_host; then
+        INGRESS_HOST=$(ingress_host)
+        if [ -n "$INGRESS_HOST" ]; then
+            printf "${GREEN}Branch host: $INGRESS_HOST${NC}\n"
+            printf '%s' "$INGRESS_HOST" > /tmp/ingress_host
+            HOST_ARGS="-s ingress-host=$INGRESS_HOST"
         else
-            printf "${YELLOW}Warning: no node domain or a branch name that isn't a valid host label; capsule-host is left unset.${NC}\n"
+            printf "${YELLOW}Warning: no node domain or a branch name that isn't a valid host label; ingress-host is left unset.${NC}\n"
         fi
     fi
 

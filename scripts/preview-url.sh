@@ -17,8 +17,8 @@ PREVIEW_URL=""
 
 # A branch routed on its own host (see dynenv-deploy.sh) is only reachable there; the bare node
 # domain would show another branch.
-if [ -s /tmp/capsule_host ]; then
-    PREVIEW_URL="https://$(cat /tmp/capsule_host)"
+if [ -s /tmp/ingress_host ]; then
+    PREVIEW_URL="https://$(cat /tmp/ingress_host)"
 fi
 
 # Prefer explicit workload namespace endpoints over peer node domain inference.
