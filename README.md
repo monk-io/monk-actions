@@ -83,7 +83,10 @@ Keep the `path-prefix`. With the variable empty the route is just `PathPrefix(/)
 host, as it did before; a route with only an empty host has no rule at all and is dropped.
 
 A generated name must resolve (the platform answers for any subdomain of a node domain) and, for
-`https`, be covered by the node domain's certificate.
+`https`, be covered by the node domain's certificate. Until both are true the preview URL doesn't
+answer, which the deploy's preview check reports; with `health-check-path` set, that fails the run.
+The variable is only passed when a template declares `ingress-host:`, so existing projects are
+unaffected until they add it.
 
 Static CI/CD deploy (no capsule environments):
 

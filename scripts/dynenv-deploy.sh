@@ -46,10 +46,13 @@ if [ ! -f "MANIFEST" ]; then
     exit 1
 fi
 
-# Whether any template in the checkout mentions `ingress-host` (BusyBox grep has no --include).
+# Whether a template in the checkout declares an `ingress-host` variable. A mention in a comment, a
+# workflow or vendored files doesn't count: passing a variable the template doesn't declare may fail
+# the update. (BusyBox grep has no --include.)
 uses_ingress_host() {
-    find . -path ./.git -prune -o -type f \( -name '*.yaml' -o -name '*.yml' \) \
-        -exec grep -l 'ingress-host' {} + 2>/dev/null | grep -q .
+    find . \( -path ./.git -o -path ./.github -o -name node_modules \) -prune -o \
+        -type f \( -name '*.yaml' -o -name '*.yml' \) \
+        -exec grep -l -E '^[[:space:]]*ingress-host:' {} + 2>/dev/null | grep -q .
 }
 
 # <environment>.<domain of the first node in the pool>, or nothing when there is no such node or the
@@ -63,7 +66,7 @@ ingress_host() {
     domain=$(monk --json cluster peers 2>/dev/null | jq -r --arg tag "$MONK_TAG" '
         [.[] | select(.domain != "" and (.domain | endswith(".monk.local") | not)
                       and .tags != null and (.tags | index($tag)) != null)][0].domain // empty
-    ' 2>/dev/null)
+    ' 2>/dev/null) || domain=""
     [ -n "$domain" ] || return 0
     printf '%s.%s' "$label" "$domain"
 }
