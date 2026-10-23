@@ -46,13 +46,26 @@ if [ ! -f "MANIFEST" ]; then
     exit 1
 fi
 
-# Whether a template in the checkout declares an `ingress-host` variable. A mention in a comment, a
-# workflow or vendored files doesn't count: passing a variable the template doesn't declare may fail
-# the update. (BusyBox grep has no --include.)
+# The template files a MANIFEST loads: its LOAD files, and those of the sub-MANIFESTs named by
+# DIR/DIRS, each relative to the MANIFEST that names it. A missing sub-MANIFEST adds nothing.
+# $2 is the nesting depth, which stops a DIRS loop.
+manifest_templates() {
+    [ -f "$1/MANIFEST" ] || return 0
+    sed 's/#.*//' "$1/MANIFEST" | awk 'toupper($1) == "LOAD" { for (i = 2; i <= NF; i++) print $i }' |
+        while read -r file; do printf '%s/%s\n' "$1" "$file"; done
+    [ "${2:-0}" -lt 8 ] || return 0
+    sed 's/#.*//' "$1/MANIFEST" |
+        awk 'toupper($1) == "DIR" || toupper($1) == "DIRS" { for (i = 2; i <= NF; i++) print $i }' |
+        while read -r sub; do manifest_templates "$1/$sub" $((${2:-0} + 1)); done
+}
+
+# Whether a template the MANIFEST loads declares an `ingress-host` variable. Other YAML in the
+# checkout, a mention in a comment, or a workflow doesn't count: passing a variable the template
+# doesn't declare may fail the update.
 uses_ingress_host() {
-    find . \( -path ./.git -o -path ./.github -o -name node_modules \) -prune -o \
-        -type f \( -name '*.yaml' -o -name '*.yml' \) \
-        -exec grep -l -E '^[[:space:]]*ingress-host:' {} + 2>/dev/null | grep -q .
+    manifest_templates . | while read -r file; do
+        [ -f "$file" ] && grep -q -E '^[[:space:]]*ingress-host:' "$file" && echo yes
+    done | grep -q yes
 }
 
 # <environment>.<domain of the first node in the pool>, or nothing when there is no such node or the
