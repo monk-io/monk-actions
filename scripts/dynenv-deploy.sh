@@ -68,8 +68,9 @@ uses_ingress_host() {
     done | grep -q yes
 }
 
-# <environment>.<domain of the first node in the pool>, or nothing when there is no such node or the
-# environment isn't usable as a single lowercase DNS label.
+# <environment>.<domain of the pool node that sorts first by domain>, or nothing when there is no
+# such node, its domain isn't a plain host name, or the environment isn't usable as a single
+# lowercase DNS label. Sorted, so a redeploy gets the same host whatever order the peers come in.
 ingress_host() {
     label=$(printf '%s' "$ENVIRONMENT_NAME" | tr 'A-Z' 'a-z')
     case "$label" in
@@ -78,9 +79,12 @@ ingress_host() {
     [ "${#label}" -le 63 ] || return 0
     domain=$(monk --json cluster peers 2>/dev/null | jq -r --arg tag "$MONK_TAG" '
         [.[] | select(.domain != "" and (.domain | endswith(".monk.local") | not)
-                      and .tags != null and (.tags | index($tag)) != null)][0].domain // empty
+                      and .tags != null and (.tags | index($tag)) != null)]
+        | sort_by(.domain) | .[0].domain // empty
     ' 2>/dev/null) || domain=""
-    [ -n "$domain" ] || return 0
+    case "$domain" in
+        ""|*[!A-Za-z0-9.-]*) return 0 ;;
+    esac
     printf '%s.%s' "$label" "$domain"
 }
 
@@ -92,22 +96,21 @@ if [ -n "$MONK_REPO" ]; then
     # Branches share the pool's node domain, so a project that uses an `ingress-host` variable is told
     # its own host under it, <environment>.<node domain>, to route on (`host: <- $ingress-host`).
     # Only passed when the project mentions it: setting a variable it doesn't declare may fail.
-    HOST_ARGS=""
+    set -- -s environment="$ENVIRONMENT_NAME"
     if uses_ingress_host; then
         INGRESS_HOST=$(ingress_host)
         if [ -n "$INGRESS_HOST" ]; then
             printf "${GREEN}Branch host: $INGRESS_HOST${NC}\n"
             printf '%s' "$INGRESS_HOST" > /tmp/ingress_host
-            HOST_ARGS="-s ingress-host=$INGRESS_HOST"
+            set -- "$@" -s "ingress-host=$INGRESS_HOST"
         else
             printf "${YELLOW}Warning: no node domain or a branch name that isn't a valid host label; ingress-host is left unset.${NC}\n"
         fi
     fi
 
     printf "${GREEN}Deploying workload $MONK_REPO/$MONK_WORKLOAD to tag $MONK_TAG...${NC}\n"
-    # shellcheck disable=SC2086
     monk update -t "$MONK_TAG" --repo "$MONK_REPO" --secret-scope "$MONK_REPO" \
-        -s environment="$ENVIRONMENT_NAME" $HOST_ARGS "$MONK_REPO/$MONK_WORKLOAD"
+        "$@" "$MONK_REPO/$MONK_WORKLOAD"
 elif [ "$CAPSULE_MODE" = "static" ]; then
     printf "${GREEN}Loading MANIFEST...${NC}\n"
     monk load MANIFEST
