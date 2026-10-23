@@ -54,6 +54,40 @@ jobs:
           MONK_ORG_SLUG: ${{ vars.MONK_ORG_SLUG }}
 ```
 
+Routing on a host. A template can take the host of its web service from an `ingress-host` variable,
+so the same template serves a real domain in production or dev and a generated one for each branch:
+
+```yaml
+stack:
+  defines: group
+  variables:
+    ingress-host:
+      type: string
+      value: ""          # or the real domain, for a deploy that doesn't set it
+```
+
+```yaml
+ingress-routes:
+  web:
+    host: <- $ingress-host
+    path-prefix: /
+```
+
+On a shared cluster (`capsule-mode: cluster`) every branch deploys to the same cluster, so a web
+service's route has to differ per branch. When a template the MANIFEST loads mentions `ingress-host`, `deploy` sets it to
+`<environment>.<domain of the first node in the pool>`, and the preview URL is that host. Everywhere
+else (a production or dev deploy, a cloud-mode capsule) the variable keeps the value the template, or
+the deploy, gives it.
+
+Keep the `path-prefix`. With the variable empty the route is just `PathPrefix(/)` and matches every
+host, as it did before; a route with only an empty host has no rule at all and is dropped.
+
+A generated name must resolve (the platform answers for any subdomain of a node domain) and, for
+`https`, be covered by the node domain's certificate. Until both are true the preview URL doesn't
+answer, which the deploy's preview check reports; with `health-check-path` set, that fails the run.
+The variable is only passed when a template loaded by the MANIFEST (`LOAD`, or a `DIRS` sub-MANIFEST) declares `ingress-host:`, so existing projects are
+unaffected until they add it.
+
 Static CI/CD deploy (no capsule environments):
 
 ```yaml
