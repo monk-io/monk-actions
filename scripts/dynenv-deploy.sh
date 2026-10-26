@@ -68,20 +68,20 @@ uses_ingress_host() {
     done | grep -q yes
 }
 
-# <environment>.<domain of the system node>, or nothing when there is no such node, its domain isn't
-# a plain host name, or the environment isn't usable as a single lowercase DNS label. The system node
-# is always there and its domain never changes, and every node's ingress serves every route, so the
-# host stays the same as the pool grows or shrinks.
+# <environment>.<domain of the system node>, or of any other node with a usable domain when the
+# system node has none, or nothing when no node has one, its domain isn't a plain host name, or the
+# environment isn't usable as a single lowercase DNS label. The system node is always there and its
+# domain never changes, and every node's ingress serves every route, so the host stays the same as
+# the pool grows or shrinks. Sorted, so a redeploy gets the same host whatever order the peers come in.
 ingress_host() {
     label=$(printf '%s' "$ENVIRONMENT_NAME" | tr 'A-Z' 'a-z')
     case "$label" in
         ""|-*|*-|*[!a-z0-9-]*) return 0 ;;
     esac
     [ "${#label}" -le 63 ] || return 0
-    domain=$(monk --json cluster peers 2>/dev/null | jq -r --arg tag "system" '
-        [.[] | select((.domain // "") != "" and ((.domain // "") | endswith(".monk.local") | not)
-                      and .tags != null and (.tags | index($tag)) != null)]
-        | sort_by(.domain) | .[0].domain // empty
+    domain=$(monk --json cluster peers 2>/dev/null | jq -r '
+        [.[] | select((.domain // "") != "" and ((.domain // "") | endswith(".monk.local") | not))]
+        | sort_by([((.tags // []) | index("system")) == null, .domain]) | .[0].domain // empty
     ' 2>/dev/null) || domain=""
     case "$domain" in
         ""|*[!A-Za-z0-9.-]*) return 0 ;;

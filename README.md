@@ -79,10 +79,11 @@ service's route has to differ per branch. When a template the MANIFEST loads men
 host. Everywhere else (a production or dev deploy, a cloud-mode capsule) the variable keeps the value
 the template, or the deploy, gives it.
 
-The system node is always there and its domain doesn't change, so a branch keeps its host while the pool
-grows or shrinks. Every node's ingress serves every route, so the host reaches the workload wherever it
-runs. A system node created before the platform answered for subdomains of node domains has no such
-record, so the host doesn't resolve on an older cluster.
+The system node is always there and its domain doesn't change, so a branch keeps its host while the
+pool grows or shrinks. Every node's ingress serves every route, so the host reaches the workload
+wherever it runs. If the system node has no domain, any other node's is used. A system node created
+before the platform answered for subdomains of node domains has no such record, so the host doesn't
+resolve on an older cluster.
 
 Keep the `path-prefix`. With the variable empty the route is just `PathPrefix(/)` and matches every
 host, as it did before; a route with only an empty host has no rule at all and is dropped.
