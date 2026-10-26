@@ -78,7 +78,7 @@ ingress_host() {
     esac
     [ "${#label}" -le 63 ] || return 0
     domain=$(monk --json cluster peers 2>/dev/null | jq -r --arg tag "$MONK_TAG" '
-        [.[] | select(.domain != "" and (.domain | endswith(".monk.local") | not)
+        [.[] | select((.domain // "") != "" and ((.domain // "") | endswith(".monk.local") | not)
                       and .tags != null and (.tags | index($tag)) != null)]
         | sort_by(.domain) | .[0].domain // empty
     ' 2>/dev/null) || domain=""

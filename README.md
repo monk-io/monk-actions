@@ -75,9 +75,14 @@ ingress-routes:
 
 On a shared cluster (`capsule-mode: cluster`) every branch deploys to the same cluster, so a web
 service's route has to differ per branch. When a template the MANIFEST loads mentions `ingress-host`, `deploy` sets it to
-`<environment>.<domain of the first node in the pool>`, and the preview URL is that host. Everywhere
-else (a production or dev deploy, a cloud-mode capsule) the variable keeps the value the template, or
-the deploy, gives it.
+`<environment>.<domain of the pool node that sorts first by domain>`, and the preview URL is that
+host. Everywhere else (a production or dev deploy, a cloud-mode capsule) the variable keeps the value
+the template, or the deploy, gives it.
+
+The host is the same on every deploy while the pool stays as it is. Growing the pool with a node whose
+domain sorts earlier moves every branch to a host under that node on its next deploy, and the old
+URLs stop answering. A node created before the platform answered for subdomains of node domains has
+no such record, so a pool that mixes old and new nodes can pick one that doesn't resolve.
 
 Keep the `path-prefix`. With the variable empty the route is just `PathPrefix(/)` and matches every
 host, as it did before; a route with only an empty host has no rule at all and is dropped.
