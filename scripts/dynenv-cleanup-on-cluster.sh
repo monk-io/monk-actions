@@ -111,39 +111,72 @@ else
     # Delete workloads using fully qualified repo/workload path
     if [ -n "$MONK_WORKLOAD" ]; then
         printf "${GREEN}Deleting workload '$ENVIRONMENT_NAME/$MONK_WORKLOAD'...${NC}\n"
-        monk delete --no-confirm --remove-volumes --remove-snapshots "$ENVIRONMENT_NAME/$MONK_WORKLOAD" 2>/dev/null || printf "${YELLOW}Warning: delete failed (may already be removed)${NC}\n"
+        # A failed delete stops the run: the environment is marked failed and keeps its cluster
+        # link, so a re-run or the hourly sweep retries it. (Deleting an absent workload succeeds.)
+        if ! monk delete --no-confirm --remove-volumes --remove-snapshots "$ENVIRONMENT_NAME/$MONK_WORKLOAD"; then
+            printf "${RED}Error: deleting the workload failed; the capsule is kept so the cleanup can be retried${NC}\n"
+            exit 1
+        fi
+        # The workload is gone by now; templates left loaded are replaced by the next load.
         printf "${GREEN}Unloading workload templates...${NC}\n"
-        monk unload --repo "$ENVIRONMENT_NAME" --no-confirm "$ENVIRONMENT_NAME/$MONK_WORKLOAD" 2>/dev/null || printf "${YELLOW}Warning: unload failed${NC}\n"
+        monk unload --repo "$ENVIRONMENT_NAME" --no-confirm "$ENVIRONMENT_NAME/$MONK_WORKLOAD" ||
+            printf "${YELLOW}Warning: unload failed${NC}\n"
     fi
 
     # Remove scoped secrets — WORKLOAD_SECRETS is a multiline KEY=value bag; we only need the keys.
+    # An absent key is fine; any other failure is reported after the rest were tried.
     if [ -n "$WORKLOAD_SECRETS" ]; then
         printf "${GREEN}Removing scoped secrets for '$ENVIRONMENT_NAME'...${NC}\n"
-        printf '%s\n' "$WORKLOAD_SECRETS" | while IFS= read -r line; do
+        SECRET_FAILED=""
+        while IFS= read -r line; do
             [ -z "$line" ] && continue
             KEY="${line%%=*}"
             [ -z "$KEY" ] && continue
-            monk secrets remove --scope "$ENVIRONMENT_NAME" "$KEY" 2>/dev/null || printf "${YELLOW}Warning: failed to remove secret '$KEY'${NC}\n"
-        done
+            if ! SECRET_OUT=$(monk secrets remove --scope "$ENVIRONMENT_NAME" "$KEY" 2>&1); then
+                case "$SECRET_OUT" in
+                    *"not found in scope"*) printf "  Secret '$KEY' was already removed.\n" ;;
+                    *)
+                        printf "${RED}Error: failed to remove secret '$KEY': $SECRET_OUT${NC}\n"
+                        SECRET_FAILED=1
+                        ;;
+                esac
+            fi
+        done <<EOF
+$WORKLOAD_SECRETS
+EOF
+        if [ -n "$SECRET_FAILED" ]; then
+            printf "${RED}Error: some scoped secrets were not removed; the capsule is kept so the cleanup can be retried${NC}\n"
+            exit 1
+        fi
     fi
 fi
 
-set_capsule_status destroyed
-
 # ============================================================================
 # Step 3: Clean up backend records (DO NOT delete cluster — it's shared)
+# Only reached once the workload and its secrets are gone. A record already gone (404) is fine;
+# any other failure stops the run, and the environment is marked failed and retried.
 # ============================================================================
 printf "${GREEN}Cleaning up backend records...${NC}\n"
 
+api_delete() {
+    CODE=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE "$1" -H "$AUTH_HEADER") || CODE=000
+    case "$CODE" in
+        2??|404) return 0 ;;
+    esac
+    printf "${RED}Error: DELETE $2 failed (HTTP $CODE)${NC}\n"
+    return 1
+}
+
 # Unlink cluster from environment
 printf "  Unlinking cluster from environment...\n"
-curl -sf -X DELETE "$ENV_PATH/cluster" -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: unlink failed${NC}\n"
+api_delete "$ENV_PATH/cluster" "the cluster link" || exit 1
 
-# Delete environment record if permanent cleanup
+# Delete environment record if permanent cleanup; otherwise keep it, marked destroyed
 if [ "$CAPSULE_DELETE_RECORDS" = "true" ]; then
     printf "  Deleting environment record...\n"
-    curl -sf -X DELETE "$ENV_PATH" -H "$AUTH_HEADER" || printf "${YELLOW}  Warning: environment delete failed${NC}\n"
+    api_delete "$ENV_PATH" "the environment record" || exit 1
 else
+    set_capsule_status destroyed
     printf "  Keeping environment record for future reprovision.\n"
 fi
 
