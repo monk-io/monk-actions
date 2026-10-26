@@ -161,6 +161,8 @@ sync_cluster_users() {
     if [ -n "$failed" ]; then
         printf "${YELLOW}Cluster user sync incomplete (+%s ~%s -%s). Not done:%s. The next push to this branch retries.${NC}\n" \
             "$added" "$updated" "$removed" "$failed"
+        # An annotation, so it shows on the run summary. Counts only: the log line has the emails.
+        echo "::warning::Cluster user sync incomplete: $(printf '%s' "$failed" | wc -w | tr -d ' ') member change(s) not applied. The next push to this branch retries; the log lists them."
     else
         printf "${GREEN}Cluster user sync complete (+%s ~%s -%s).${NC}\n" "$added" "$updated" "$removed"
     fi
