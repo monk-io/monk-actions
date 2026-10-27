@@ -1,5 +1,5 @@
 ARG MONK_CI_VERSION=latest
-FROM monkreleases.azurecr.io/monk-ci:${MONK_CI_VERSION}
+FROM registry.monk.io/monk-ci:${MONK_CI_VERSION}
 
 # Capsule scripts need curl, jq (likely already in monk-ci) and htpasswd for
 # generating the per-cluster registry password hash.
