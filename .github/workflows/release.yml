@@ -1,4 +1,4 @@
-name: Build and Push to Artifact Registry
+name: Build and Push to images.monk.io
 
 on:
   workflow_dispatch:
@@ -11,8 +11,7 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+-rc*"
 
 env:
-  REGISTRY_AZURE: monkimages.azurecr.io
-  REGISTRY_AZURE_USER: github-ci-push
+  REGISTRY: images.monk.io
   IMAGE_NAME: monk-actions
 
 jobs:
@@ -56,13 +55,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Docker auth
-        run: echo "${{ secrets.REGISTRY_AZURE_PASSWORD }}" | docker login -u ${{ env.REGISTRY_AZURE_USER }} --password-stdin ${{ env.REGISTRY_AZURE }}
+        run: echo "${{ secrets.CF_REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.CF_REGISTRY_USERNAME }}" --password-stdin ${{ env.REGISTRY }}
 
       - name: Set image refs
         run: |
-          echo "IMAGE_REF=${{ env.REGISTRY_AZURE }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.ref }}" >> $GITHUB_ENV
+          echo "IMAGE_REF=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.ref }}" >> $GITHUB_ENV
           if [ "${{ steps.tags.outputs.is_release }}" = "true" ] && [ "${{ steps.tags.outputs.is_prerelease }}" = "false" ]; then
-            echo "IMAGE_REF_MAJOR=${{ env.REGISTRY_AZURE }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.major }}" >> $GITHUB_ENV
+            echo "IMAGE_REF_MAJOR=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.tags.outputs.major }}" >> $GITHUB_ENV
           fi
 
       - name: Build Docker image

@@ -20,8 +20,7 @@ on:
         required: true
 
 env:
-  REGISTRY_AZURE: monkimages.azurecr.io
-  REGISTRY_AZURE_USER: github-ci-push
+  REGISTRY: images.monk.io
   IMAGE_NAME: monk-actions
 
 jobs:
@@ -42,13 +41,13 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Docker auth
-        run: echo "${{ secrets.REGISTRY_AZURE_PASSWORD }}" | docker login -u ${{ env.REGISTRY_AZURE_USER }} --password-stdin ${{ env.REGISTRY_AZURE }}
+        run: echo "${{ secrets.CF_REGISTRY_PASSWORD }}" | docker login -u "${{ secrets.CF_REGISTRY_USERNAME }}" --password-stdin ${{ env.REGISTRY }}
 
       - name: Build image against new monk-ci base
         run: |
           docker build . \
             --build-arg MONK_CI_VERSION=${{ steps.ver.outputs.version }} \
-            --tag ${{ env.REGISTRY_AZURE }}/${{ env.IMAGE_NAME }}:v1
+            --tag ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v1
 
       - name: Push floating :v1
-        run: docker push ${{ env.REGISTRY_AZURE }}/${{ env.IMAGE_NAME }}:v1
+        run: docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v1
