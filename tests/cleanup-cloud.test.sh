@@ -65,9 +65,11 @@ export CLUSTER_NAME=proj-feat ENVIRONMENT_NAME=feat MONK_CAPSULE_TOKEN=t \
     MONK_SUBSCRIPTION_API_BASE=https://api MONK_AUTH_SERVICE_URL=https://auth \
     MONK_API_PREFIX=orgs/o MONK_PROJECT_SLUG=p CAPSULE_DELETE_RECORDS=true
 
-run() { # linked cluster name, failure kind
+run() { # linked cluster name, failure kind, mode provision recorded (none when empty)
     : > "$STUB_LOG"
-    printf '{"cluster":{"name":"%s","clusterId":"cid","monkcode":"mc"}}' "$1" > "$ENV_JSON"
+    settings='{}'
+    [ -z "${3:-}" ] || settings=$(printf '{"capsule":{"mode":"%s"}}' "$3")
+    printf '{"cluster":{"name":"%s","clusterId":"cid","monkcode":"mc"},"settings":%s}' "$1" "$settings" > "$ENV_JSON"
     MONK_FAILURE="$2" sh "$SCRIPT" > "$T/out" 2>&1
     echo $?
 }
@@ -96,6 +98,15 @@ check "own cluster, access refused: platform record kept" 0 "$(called 'DELETE ht
 rc=$(run proj-feat refused)
 check "own cluster, gone: cleanup succeeds" 0 "$rc"
 check "own cluster, gone: platform record deleted" 1 "$(called 'DELETE https://api/orgs/o/clusters/cid')"
+
+# Provision records who owns the cluster, and that is what decides, not the name.
+rc=$(run proj-feat access cluster)
+check "recorded shared mode: left alone even when it is named like the capsule's own" 000 "$rc$(called 'cluster nuke')$(called 'DELETE https://api/orgs/o/clusters/')"
+rc=$(run renamed-by-hand refused cloud)
+check "recorded cloud mode: its cluster is destroyed even if renamed" 0 "$rc"
+check "recorded cloud mode: platform record deleted" 1 "$(called 'DELETE https://api/orgs/o/clusters/cid')"
+rc=$(run shared-cluster access "")
+check "no recorded mode (older capsule), other name: left alone" 000 "$rc$(called 'cluster nuke')$(called 'DELETE https://api/orgs/o/clusters/')"
 
 rm -rf "$T"
 [ "$FAILS" -eq 0 ] && echo "all passed" || { echo "$FAILS failed"; exit 1; }
