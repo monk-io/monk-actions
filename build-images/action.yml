@@ -17,6 +17,10 @@ inputs:
     description: "Whether to verify the registry's TLS certificate when pushing with podman. Default true."
     required: false
     default: "true"
+  image-suffix:
+    description: "Cluster capsules, which share one registry: push each image as <tag>-<image-suffix> (the capsule environment), so branches don't overwrite each other. Pass the same value to deploy. Empty: push the tag as written."
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -35,6 +39,7 @@ runs:
         REGISTRY_PASSWORD_B64: ${{ inputs.registry-password-b64 }}
         REGISTRY_PASSWORD_PLAIN: ${{ inputs.registry-password }}
         REGISTRY_TLS_VERIFY: ${{ inputs.registry-tls-verify }}
+        IMAGE_SUFFIX: ${{ inputs.image-suffix }}
         PARSE_MANIFEST: ${{ github.action_path }}/../scripts/parse-manifest.sh
         BUILD_IMAGES_SCRIPT: ${{ github.action_path }}/../scripts/build-images.sh
       run: |

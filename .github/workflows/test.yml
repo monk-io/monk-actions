@@ -1,0 +1,16 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    container: alpine:3
+    steps:
+      - run: apk add --no-cache jq
+      - uses: actions/checkout@v4
+      - run: sh tests/image-tag.test.sh
+      - run: sh tests/deploy.test.sh
