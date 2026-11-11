@@ -92,8 +92,10 @@ eq "no other warning" "1" "$(wc -l < err.txt | tr -d ' ')"
 
 # idempotent for the same suffix: the rewritten tag is not rewritten again
 cp tpl.yaml before.yaml
-rewrite_templates_for_branch feat-a > /dev/null 2>&1
+rewrite_templates_for_branch feat-a > /dev/null 2> err2.txt
 eq "second run changes nothing" "$(cat before.yaml)" "$(cat tpl.yaml)"
+eq "second run is not told the image is shared" "1" "$(grep -c "untouched:1" err2.txt)"
+eq "and has no other warning" "1" "$(wc -l < err2.txt | tr -d ' ')"
 
 # a template outside the MANIFEST's loads is left alone
 printf 'image: capsule-sample:latest\n' > other.yaml

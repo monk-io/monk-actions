@@ -103,10 +103,10 @@ MANIFEST loads (`LOAD`, or a `DIRS` sub-MANIFEST) at it before loading them, mat
 exactly (and `image: app` when the tag is `latest`). The tag can also be its own key: `image: app` with
 `image-tag: v2` next to it becomes `image-tag: v2-feat-a` when `v2` is the tag built. No template
 change is needed. A MANIFEST image no loaded template names literally (the tag or name comes from a
-variable, such as `image-tag: <- $tag`) can't be rewritten: deploy warns, and that image stays shared. Both actions must get the same value; leave
+variable, such as `image-tag: <- $tag`) can't be rewritten: deploy warns, and that image stays shared. Both actions must get the same value, in any mode; leave
 it empty for cloud capsules, where each branch has its own registry.
 
-A branch's own secret values. `deploy` takes `workload-secrets` (`KEY=value` lines) and sets them on
+A branch's own secret values. `deploy` takes `workload-secrets` (single-line `KEY=value` lines, as for `provision`; capsules only) and sets them on
 the cluster before the workload updates, over the shared values `provision` seeded. Run `deploy` in
 the branch's GitHub environment (`capsule-<environment>`) and pass `KEY=${{ secrets.KEY }}`: a secret
 set in that environment is the branch's own, otherwise the value is empty and skipped, so the shared

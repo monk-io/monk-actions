@@ -79,27 +79,35 @@ ingress_host() {
 }
 
 # build-images pushed each image as <tag>-<IMAGE_SUFFIX>; point the templates at it before loading.
-if [ -n "$IMAGE_SUFFIX" ] && [ "$CAPSULE_MODE" != "static" ]; then
+if [ -n "$IMAGE_SUFFIX" ]; then
     rewrite_templates_for_branch "$IMAGE_SUFFIX"
 fi
 
-# WORKLOAD_SECRETS (KEY=value lines) holds this branch's own values, set over the shared ones
-# provision seeded. An empty value means the branch has none, so it is skipped.
+# WORKLOAD_SECRETS (single-line NAME=value lines) holds this branch's own values, set over the shared
+# ones provision seeded. An empty value means the branch has none, so it is skipped.
 seed_workload_secrets() {
     [ -n "$WORKLOAD_SECRETS" ] || return 0
-    [ "$CAPSULE_MODE" != "static" ] || return 0
-    printf '%s\n' "$WORKLOAD_SECRETS" | while IFS= read -r line; do
+    while IFS= read -r line; do
         [ -z "$line" ] && continue
+        case "$line" in
+            *=*) ;;
+            *) printf "${YELLOW}Warning: skipping a workload-secrets line that isn't NAME=value${NC}\n"; continue ;;
+        esac
         KEY="${line%%=*}"
         VALUE="${line#*=}"
-        [ -n "$KEY" ] && [ -n "$VALUE" ] || continue
+        case "$KEY" in
+            ""|*[!A-Za-z0-9_-]*) printf "${YELLOW}Warning: skipping a workload-secrets line with an invalid name${NC}\n"; continue ;;
+        esac
+        [ -n "$VALUE" ] || continue
         if [ -n "$MONK_REPO" ]; then
             monk secrets add --scope "$MONK_REPO" "$KEY=$VALUE" > /dev/null || exit 1
         else
             monk secrets add -g "$KEY=$VALUE" > /dev/null || exit 1
         fi
         printf "${GREEN}Secret $KEY set from this branch's environment${NC}\n"
-    done
+    done <<EOF
+$WORKLOAD_SECRETS
+EOF
 }
 
 # When MONK_REPO is set (shared cluster), load under a dedicated repo namespace.
@@ -127,6 +135,7 @@ if [ -n "$MONK_REPO" ]; then
     monk update -t "$MONK_TAG" --repo "$MONK_REPO" --secret-scope "$MONK_REPO" \
         "$@" "$MONK_REPO/$MONK_WORKLOAD"
 elif [ "$CAPSULE_MODE" = "static" ]; then
+    [ -z "$WORKLOAD_SECRETS" ] || printf "${YELLOW}Warning: workload-secrets is only used for capsules; ignored in static mode.${NC}\n"
     printf "${GREEN}Loading MANIFEST...${NC}\n"
     monk load MANIFEST
 

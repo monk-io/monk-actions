@@ -110,7 +110,8 @@ rewrite_image_in_file() {
         }' "$3" > "$tmp"
     cat "$tmp" > "$3"
     rm -f "$tmp"
-    [ "$before" != "$(cksum < "$3")" ] && echo 1 || echo 0
+    # A file already pointed at the branch tag (a rerun in the same checkout) counts as found.
+    if [ "$before" != "$(cksum < "$3")" ] || grep -qF "${tag}-$2" "$3"; then echo 1; else echo 0; fi
 }
 
 # Points the templates the MANIFEST loads at the branch tag ($1) of every image it builds. Warns for
@@ -120,7 +121,7 @@ rewrite_templates_for_branch() {
     [ -f MANIFEST ] || return 0
     images=$(sh "${PARSE_MANIFEST:-/opt/monk-actions/scripts/parse-manifest.sh}" get-images)
     [ -n "$images" ] || return 0
-    templates=$(manifest_templates . | while read -r file; do [ -f "$file" ] && echo "$file"; done)
+    templates=$(manifest_templates . | while read -r file; do if [ -f "$file" ]; then echo "$file"; fi; done)
     for image in $images; do
         if ! branch_image_tag "$image" "$suffix" > /dev/null; then
             echo "Warning: image '$image' can't get a branch tag (digest, or a tag longer than 128 characters); it is shared by every branch." >&2

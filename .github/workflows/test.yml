@@ -8,9 +8,11 @@ on:
 jobs:
   scripts:
     runs-on: ubuntu-latest
-    container: alpine:3
     steps:
-      - run: apk add --no-cache jq
       - uses: actions/checkout@v4
-      - run: sh tests/image-tag.test.sh
-      - run: sh tests/deploy.test.sh
+      # Alpine's busybox is what the actions image runs the scripts with.
+      - run: |
+          docker run --rm -v "$PWD":/w:ro alpine:3 sh -c '
+            apk add --no-cache jq >/dev/null
+            cp -r /w /t && cd /t
+            sh tests/image-tag.test.sh && sh tests/deploy.test.sh'
