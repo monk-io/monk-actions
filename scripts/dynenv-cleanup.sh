@@ -68,6 +68,16 @@ fi
 
 MONKCODE=$(jq -r '.cluster.monkcode // empty' /tmp/env_response.json)
 CLUSTER_ID=$(jq -r '.cluster.clusterId // empty' /tmp/env_response.json)
+LINKED_CLUSTER_NAME=$(jq -r '.cluster.name // empty' /tmp/env_response.json)
+
+# This script destroys the cluster the environment is linked to, which is only right when that
+# cluster is the capsule's own. A shared cluster (another mode's environments link to it) or one
+# whose name isn't known is left running: only the environment's link and record are removed.
+if [ -n "$CLUSTER_ID" ] && [ "$LINKED_CLUSTER_NAME" != "$CLUSTER_NAME" ]; then
+    printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', not to this capsule's own cluster '$CLUSTER_NAME'. Leaving that cluster running and removing only the environment's link and record.${NC}\n"
+    MONKCODE=""
+    CLUSTER_ID=""
+fi
 
 # Capsule status is written once the outcome is known: "destroyed" after the
 # cluster and records are gone, "failed" (with the reason) if any step fails,
@@ -95,15 +105,22 @@ on_exit() {
 }
 trap on_exit EXIT
 
-# True once the cluster has refused a fresh connection 3 times in a row.
+# True once the cluster has refused a fresh connection 3 times in a row. Being refused access is
+# not the cluster being gone: it still runs, so that answer ends the wait with "not gone".
 cluster_gone() {
     misses=0
     tries=0
     while [ "$tries" -lt 12 ]; do
         tries=$((tries + 1))
-        if MONK_SOCKET="monkcode://$MONKCODE" monk --json cluster peers >/dev/null 2>&1; then
+        if out=$(MONK_SOCKET="monkcode://$MONKCODE" monk --json cluster peers 2>&1); then
             misses=0
         else
+            case "$out" in
+                *"doesn't have access"*|*"not authorized"*|*[Pp]ermission*|*[Ff]orbidden*|*[Uu]nauthorized*|*"access denied"*)
+                    printf "${YELLOW}The cluster refused access, which doesn't mean it is gone.${NC}\n"
+                    return 1
+                    ;;
+            esac
             misses=$((misses + 1))
             if [ "$misses" -ge 3 ]; then return 0; fi
         fi
