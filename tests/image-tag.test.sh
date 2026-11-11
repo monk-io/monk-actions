@@ -87,7 +87,7 @@ eq "sub-MANIFEST template rewritten" "api:
       image: api:v2-feat-a
     d:
       image: api:v20" "$(cat sub/sub.yaml)"
-eq "warns for an image no template names" "1" "$(grep -c "untouched:1" err.txt)"
+eq "warns for an image no template writes out" "1" "$(grep -c "untouched:1" err.txt)"
 eq "no other warning" "1" "$(wc -l < err.txt | tr -d ' ')"
 
 # idempotent for the same suffix: the rewritten tag is not rewritten again

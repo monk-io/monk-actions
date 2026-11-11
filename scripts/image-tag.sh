@@ -115,7 +115,8 @@ rewrite_image_in_file() {
 }
 
 # Points the templates the MANIFEST loads at the branch tag ($1) of every image it builds. Warns for
-# an image no template names literally: it stays shared between branches.
+# an image that isn't written out as `image: ...` in any loaded template (it may come from a
+# variable): it stays shared between branches.
 rewrite_templates_for_branch() {
     suffix="$1"
     [ -f MANIFEST ] || return 0
@@ -133,7 +134,7 @@ rewrite_templates_for_branch() {
             changed=$((changed + n))
         done
         if [ "$changed" -eq 0 ]; then
-            echo "Warning: no template the MANIFEST loads names image '$image' literally, so it can't be pointed at its branch tag; a node that has it already runs the image another branch pushed." >&2
+            echo "Warning: image '$image' (a MANIFEST IMAGE line) isn't written out as 'image: ...' in any template the MANIFEST loads (it may come from a variable), so it can't get a branch tag and stays shared between branches: a node that already has it runs the image another branch pushed." >&2
         else
             echo "Image '$image' -> '$(branch_image_tag "$image" "$suffix")' in $changed template file(s)"
         fi
