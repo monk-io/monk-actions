@@ -69,12 +69,20 @@ fi
 MONKCODE=$(jq -r '.cluster.monkcode // empty' /tmp/env_response.json)
 CLUSTER_ID=$(jq -r '.cluster.clusterId // empty' /tmp/env_response.json)
 LINKED_CLUSTER_NAME=$(jq -r '.cluster.name // empty' /tmp/env_response.json)
+RECORDED_MODE=$(jq -r '.settings.capsule.mode // empty' /tmp/env_response.json)
 
 # This script destroys the cluster the environment is linked to, which is only right when that
-# cluster is the capsule's own. A shared cluster (another mode's environments link to it) or one
-# whose name isn't known is left running: only the environment's link and record are removed.
-if [ -n "$CLUSTER_ID" ] && [ "$LINKED_CLUSTER_NAME" != "$CLUSTER_NAME" ]; then
-    printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', not to this capsule's own cluster '$CLUSTER_NAME'. Leaving that cluster running and removing only the environment's link and record.${NC}\n"
+# cluster is the capsule's own. Provision records the mode ("cloud": it made the cluster; "cluster":
+# a shared one). A capsule from before that was recorded owns a cluster named like its own. Anything
+# else is left running: only the environment's link and record are removed.
+OWN_CLUSTER=false
+case "$RECORDED_MODE" in
+    cloud) OWN_CLUSTER=true ;;
+    cluster) ;;
+    *) if [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then OWN_CLUSTER=true; fi ;;
+esac
+if [ -n "$CLUSTER_ID" ] && [ "$OWN_CLUSTER" != "true" ]; then
+    printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', which isn't this capsule's own (recorded mode: ${RECORDED_MODE:-none}). Leaving that cluster running and removing only the environment's link and record.${NC}\n"
     MONKCODE=""
     CLUSTER_ID=""
 fi
