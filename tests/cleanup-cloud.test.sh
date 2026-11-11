@@ -80,6 +80,7 @@ check "shared cluster: not nuked" 0 "$(called 'cluster nuke')"
 check "shared cluster: platform record kept" 0 "$(called 'DELETE https://api/orgs/o/clusters/')"
 check "shared cluster: environment unlinked and deleted" 2 "$(grep -c 'DELETE https://api/orgs/o/projects/p/environments/feat' "$STUB_LOG")"
 check "shared cluster: says so" 1 "$(grep -c "Leaving that cluster running" "$T/out")"
+check "shared cluster: annotated on the run" 1 "$(grep -c '^::warning title=Cluster left running::' "$T/out")"
 
 # A link that doesn't say which cluster it is can't be shown to be the capsule's own.
 printf '{"cluster":{"clusterId":"cid","monkcode":"mc"}}' > "$ENV_JSON"

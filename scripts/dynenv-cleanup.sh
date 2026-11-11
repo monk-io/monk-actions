@@ -72,9 +72,13 @@ LINKED_CLUSTER_NAME=$(jq -r '.cluster.name // empty' /tmp/env_response.json)
 
 # This script destroys the cluster the environment is linked to, which is only right when that
 # cluster is the capsule's own. A shared cluster (another mode's environments link to it) or one
-# whose name isn't known is left running: only the environment's link and record are removed.
+# whose name isn't known is left running: only the environment's link and record are removed. This
+# finishes instead of failing, because the hourly sweep retries a destroy that fails, forever.
 if [ -n "$CLUSTER_ID" ] && [ "$LINKED_CLUSTER_NAME" != "$CLUSTER_NAME" ]; then
     printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', not to this capsule's own cluster '$CLUSTER_NAME'. Leaving that cluster running and removing only the environment's link and record.${NC}\n"
+    # A workflow annotation, so it is on the run's summary and not only in the step log. The workloads this
+    # capsule deployed to that cluster are left too: if it was deployed in cluster mode, unload them.
+    printf '::warning title=Cluster left running::Environment %s is linked to cluster %s, which is not this capsule'"'"'s own (%s). It and anything deployed to it were left in place; if it really is this capsule'"'"'s own, delete it from Monk.\n' "$ENVIRONMENT_NAME" "${LINKED_CLUSTER_NAME:-unknown}" "$CLUSTER_NAME"
     MONKCODE=""
     CLUSTER_ID=""
 fi
@@ -157,7 +161,7 @@ else
         printf "${GREEN}Cluster nuked.${NC}\n"
         NUKED=true
     else
-        printf "${YELLOW}The cluster still answers. Retrying through a local daemon joined to it...${NC}\n"
+        printf "${YELLOW}The cluster isn't confirmed gone. Retrying through a local daemon joined to it...${NC}\n"
         NUKED=false
     fi
 fi
