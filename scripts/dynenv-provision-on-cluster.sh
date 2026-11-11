@@ -138,7 +138,7 @@ CAPSULE_PAYLOAD=$(jq -n \
     --arg cluster "$CLUSTER_NAME" \
     --arg ghenv "$GITHUB_ENVIRONMENT" \
     --arg now "$NOW_UTC" \
-    '{source:"dynenv",mode:"cluster",branch:$branch,repository:$repo,orgSlug:$org,projectSlug:$project,clusterName:$cluster,githubEnvironment:$ghenv,status:"provisioned",updatedAt:$now}')
+    '{source:"dynenv",branch:$branch,repository:$repo,orgSlug:$org,projectSlug:$project,clusterName:$cluster,githubEnvironment:$ghenv,status:"provisioned",updatedAt:$now}')
 
 if [ "$ENV_HTTP_CODE" = "200" ]; then
     printf "${GREEN}Environment exists, updating...${NC}\n"
