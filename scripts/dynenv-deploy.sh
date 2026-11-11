@@ -88,6 +88,7 @@ fi
 seed_workload_secrets() {
     [ -n "$WORKLOAD_SECRETS" ] || return 0
     while IFS= read -r line; do
+        line=${line%"$(printf '\r')"}   # a value edited on Windows must not carry its line ending
         [ -z "$line" ] && continue
         case "$line" in
             *=*) ;;
@@ -99,10 +100,11 @@ seed_workload_secrets() {
             ""|*[!A-Za-z0-9_-]*) printf "${YELLOW}Warning: skipping a workload-secrets line with an invalid name${NC}\n"; continue ;;
         esac
         [ -n "$VALUE" ] || continue
+        # Both streams are dropped: a failure could echo its arguments, and so the value, into the log.
         if [ -n "$MONK_REPO" ]; then
-            monk secrets add --scope "$MONK_REPO" "$KEY=$VALUE" > /dev/null || exit 1
+            monk secrets add --scope "$MONK_REPO" "$KEY=$VALUE" > /dev/null 2>&1 || { printf "${RED}Error: could not set secret $KEY${NC}\n"; exit 1; }
         else
-            monk secrets add -g "$KEY=$VALUE" > /dev/null || exit 1
+            monk secrets add -g "$KEY=$VALUE" > /dev/null 2>&1 || { printf "${RED}Error: could not set secret $KEY${NC}\n"; exit 1; }
         fi
         printf "${GREEN}Secret $KEY set from this branch's environment${NC}\n"
     done <<EOF

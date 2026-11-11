@@ -34,6 +34,7 @@ image_tag_of() {
 # Prints <name>:<tag>-<suffix> for MANIFEST image $1 and suffix $2. Fails for a digest, a suffix
 # a tag can't hold, or a result over 128 characters.
 branch_image_tag() {
+    local name tag
     case "$2" in
         ""|*[!A-Za-z0-9_.-]*) return 1 ;;
     esac
@@ -49,12 +50,13 @@ branch_image_tag() {
 # Points template file $3 at the branch tag of MANIFEST image $1 (suffix $2). Prints 1 when the file
 # changed, else 0.
 rewrite_image_in_file() {
+    local new name tag esc_name esc_tag esc_new before tmp
     new=$(branch_image_tag "$1" "$2") || return 1
     name=$(image_name "$1")
     tag=$(image_tag_of "$1")
-    # Escape what is special in a basic regular expression, and the delimiter.
-    esc_name=$(printf '%s' "$name" | sed 's/[][\.*^$|/]/\\&/g')
-    esc_tag=$(printf '%s' "$tag" | sed 's/[][\.*^$|/]/\\&/g')
+    # Escape what is special in an extended regular expression, and the delimiter.
+    esc_name=$(printf '%s' "$name" | sed 's/[][\.*^$|/+?(){}]/\\&/g')
+    esc_tag=$(printf '%s' "$tag" | sed 's/[][\.*^$|/+?(){}]/\\&/g')
     esc_new=$(printf '%s' "$new" | sed 's/[&/\]/\\&/g')
     before=$(cksum < "$3")
     # name:tag as a whole word: not part of a longer name or tag. Twice, because two matches
@@ -73,6 +75,8 @@ rewrite_image_in_file() {
             # the first key of a list item has its siblings after it, never before: above it is the previous item
             for (j = i - 1; j >= 1 && line[i] !~ /^ *- /; j--) {
                 s = line[j]; if (s ~ /^[ \t]*(#|$)/) continue
+                # `- image-tag: x` opening the item: its key sits at the column of the keys after the dash
+                if (s ~ /^ *- +image-tag:/ && index(s, "image-tag:") - 1 == col) return j
                 ind = indent(s); if (ind < col) break
                 if (ind == col && s ~ /^ *image-tag:/) return j
             }
@@ -98,7 +102,7 @@ rewrite_image_in_file() {
                 k = sibling(i, col)
                 if (k > 0) {
                     # an image and its tag apart: the tag is the one to change, if it is the one built
-                    tv = line[k]; sub(/^ *image-tag:[ \t]*/, "", tv)
+                    tv = line[k]; sub(/^ *(- +)?image-tag:[ \t]*/, "", tv)
                     if (unq(tv) == tag) line[k] = setval(line[k], "image-tag:", tag, newtag)
                 } else if (tag == "latest") {
                     # no tag at all is latest; the name alone also appears as a namespace or a path,
@@ -110,14 +114,15 @@ rewrite_image_in_file() {
         }' "$3" > "$tmp"
     cat "$tmp" > "$3"
     rm -f "$tmp"
-    # A file already pointed at the branch tag (a rerun in the same checkout) counts as found.
-    if [ "$before" != "$(cksum < "$3")" ] || grep -qF "${tag}-$2" "$3"; then echo 1; else echo 0; fi
+    # A file that already names the branch tag in full (a rerun in the same checkout) counts as found.
+    if [ "$before" != "$(cksum < "$3")" ] || grep -qF "$new" "$3"; then echo 1; else echo 0; fi
 }
 
 # Points the templates the MANIFEST loads at the branch tag ($1) of every image it builds. Warns for
 # an image that isn't written out as `image: ...` in any loaded template (it may come from a
 # variable): it stays shared between branches.
 rewrite_templates_for_branch() {
+    local suffix images templates image changed file n
     suffix="$1"
     [ -f MANIFEST ] || return 0
     images=$(sh "${PARSE_MANIFEST:-/opt/monk-actions/scripts/parse-manifest.sh}" get-images)

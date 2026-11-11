@@ -110,8 +110,10 @@ A branch's own secret values. `deploy` takes `workload-secrets` (single-line `KE
 the cluster before the workload updates, over the shared values `provision` seeded. Run `deploy` in
 the branch's GitHub environment (`capsule-<environment>`) and pass `KEY=${{ secrets.KEY }}`: a secret
 set in that environment is the branch's own, otherwise the value is empty and skipped, so the shared
-one stays. Deleting the environment secret returns the branch to the shared value on its next
-provision.
+one stays. Deleting the environment secret returns the branch to the shared value on its next run
+with `provision`: that run re-seeds the shared value first, and `deploy` then skips the now empty
+branch one. `deploy` never removes a value by itself, so a secret with no shared value keeps the
+branch's last value on the cluster until it is provisioned again.
 
 Static CI/CD deploy (no capsule environments):
 
@@ -151,7 +153,7 @@ sh tests/deploy.test.sh   # needs jq
 sh tests/cleanup-cloud.test.sh   # needs jq
 ```
 
-Both also run under Alpine, which is what the actions image uses.
+They also run under Alpine, which is what the actions image uses.
 
 ## Secrets pattern
 

@@ -135,6 +135,12 @@ a:
         image-tag: latest
       - image: app
         image-tag: v2
+    nine:
+      - name: x
+        image-tag: v2
+        image: app
+      - image-tag: v2
+        image: app
 Y
 rewrite_templates_for_branch feat-a > out.txt 2> err.txt
 eq "image + image-tag pairs" "a:
@@ -163,11 +169,27 @@ eq "image + image-tag pairs" "a:
       - image: web
         image-tag: latest-feat-a
       - image: app
-        image-tag: v2-feat-a" "$(cat tpl.yaml)"
+        image-tag: v2-feat-a
+    nine:
+      - name: x
+        image-tag: v2-feat-a
+        image: app
+      - image-tag: v2-feat-a
+        image: app" "$(cat tpl.yaml)"
 eq "no warning when every image was found" "0" "$(wc -c < err.txt | tr -d ' ')"
 cp tpl.yaml before.yaml
 rewrite_templates_for_branch feat-a > /dev/null 2>&1
 eq "pairs: second run changes nothing" "$(cat before.yaml)" "$(cat tpl.yaml)"
+
+# One image's rewrite doesn't hide that another image (same tag) can't be rewritten
+cd / && rm -rf "$T"
+T=$(mktemp -d)
+cd "$T" || exit 1
+printf 'LOAD tpl.yaml\nIMAGE a:latest x . Dockerfile\nIMAGE b:latest x . Dockerfile\n' > MANIFEST
+printf 'c:\n  containers:\n    one:\n      image: a:latest\n    two:\n      image: <- $b-image\n' > tpl.yaml
+rewrite_templates_for_branch feat-a > out.txt 2> err.txt
+eq "the image that can't be rewritten is warned about" "1" "$(grep -c "image 'b:latest'" err.txt)"
+eq "and the other one is rewritten" "1" "$(grep -c 'image: a:latest-feat-a' tpl.yaml)"
 
 cd / && rm -rf "$T"
 [ "$FAILS" -eq 0 ] && echo "all passed" || { echo "$FAILS failed"; exit 1; }

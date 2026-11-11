@@ -89,17 +89,29 @@ export CAPSULE_MODE=cluster IMAGE_SUFFIX=feat-a; unset WORKLOAD_SECRETS
 eq "missing last template doesn't stop the deploy" 0 "$(run)"
 printf 'REPO sample\nLOAD template.yaml\nENTRY sample/stack\nIMAGE app:latest sample/web . Dockerfile\n' > MANIFEST
 
-# a failing secret write fails the deploy before anything is loaded
+# a line ending from a file edited on Windows is not part of the value
 cat > "$T/bin/monk" <<'S'
 #!/bin/sh
 echo "monk $*" >> "$STUB_LOG"
-case "$1 $2" in "secrets add") exit 1 ;; esac
 exit 0
 S
-export CAPSULE_MODE=cluster WORKLOAD_SECRETS='a=b'
+export CAPSULE_MODE=cloud BRANCH_TAG=branch-feat-a; unset IMAGE_SUFFIX
+export WORKLOAD_SECRETS="$(printf 'crlf=value\r\nonly-cr=\r\n')"
+eq "CRLF deploy succeeds" 0 "$(run)"
+eq "the carriage return is dropped, and a value that was only one is empty and skipped" "monk secrets add -g crlf=value" "$(grep 'secrets add' "$STUB_LOG")"
+
+# a failing secret write fails the deploy before anything is loaded, without printing the value
+cat > "$T/bin/monk" <<'S'
+#!/bin/sh
+echo "monk $*" >> "$STUB_LOG"
+case "$1 $2" in "secrets add") echo "failed: $*" >&2; exit 1 ;; esac
+exit 0
+S
+export CAPSULE_MODE=cluster WORKLOAD_SECRETS='a=topsecretvalue'
 r=$(run)
 eq "failed secret write fails the deploy" 1 "$r"
 eq "and nothing is loaded" 0 "$(grep -c 'monk load' "$STUB_LOG")"
+eq "and the value is not in the output" 0 "$(grep -c 'topsecretvalue' "$T/out")"
 
 rm -rf "$T"
 [ "$FAILS" -eq 0 ] && echo "all passed" || { echo "$FAILS failed"; exit 1; }
