@@ -148,6 +148,7 @@ See the [Monk VS Code extension](https://github.com/monk-io/vscode-monk) repo fo
 ```sh
 sh tests/image-tag.test.sh
 sh tests/deploy.test.sh   # needs jq
+sh tests/cleanup-cloud.test.sh   # needs jq
 ```
 
 Both also run under Alpine, which is what the actions image uses.
