@@ -154,8 +154,14 @@ fi
 
 # Link cluster to environment (idempotent)
 printf "${GREEN}Linking cluster to environment...${NC}\n"
-curl -sf -X PUT "$ENV_PATH/cluster" \
+if curl -sf -X PUT "$ENV_PATH/cluster" \
     -H "$AUTH_HEADER" -H "Content-Type: application/json" \
-    -d "{\"clusterId\":\"$CLUSTER_ID\",\"force\":true}" > /dev/null 2>&1 || true
+    -d "{\"clusterId\":\"$CLUSTER_ID\",\"force\":true}" > /dev/null 2>&1; then
+    # Recorded only once the link is in place: the mode says the linked cluster is a shared one, and
+    # the cleanup of a cloud capsule never destroys a cluster recorded that way.
+    curl -sf -X PATCH "$ENV_PATH" \
+        -H "$AUTH_HEADER" -H "Content-Type: application/json" \
+        -d '{"settings":{"capsule":{"mode":"cluster"}}}' > /dev/null 2>&1 || true
+fi
 
 printf "${GREEN}Provisioning on existing cluster complete! Environment '$ENVIRONMENT_NAME' ready on cluster '$CLUSTER_NAME'.${NC}\n"

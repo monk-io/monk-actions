@@ -69,13 +69,21 @@ fi
 MONKCODE=$(jq -r '.cluster.monkcode // empty' /tmp/env_response.json)
 CLUSTER_ID=$(jq -r '.cluster.clusterId // empty' /tmp/env_response.json)
 LINKED_CLUSTER_NAME=$(jq -r '.cluster.name // empty' /tmp/env_response.json)
+RECORDED_MODE=$(jq -r '.settings.capsule.mode // empty' /tmp/env_response.json)
 
 # This script destroys the cluster the environment is linked to, which is only right when that
-# cluster is the capsule's own. A shared cluster (another mode's environments link to it) or one
-# whose name isn't known is left running: only the environment's link and record are removed. This
-# finishes instead of failing, because the hourly sweep retries a destroy that fails, forever.
-if [ -n "$CLUSTER_ID" ] && [ "$LINKED_CLUSTER_NAME" != "$CLUSTER_NAME" ]; then
-    printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', not to this capsule's own cluster '$CLUSTER_NAME'. Leaving that cluster running and removing only the environment's link and record.${NC}\n"
+# cluster is the capsule's own: provision recorded "cloud" for the environment (a shared cluster is
+# recorded "cluster", and a mode this script doesn't know is no better) and the linked cluster is
+# named like the capsule's own, in case the environment was relinked since. Anything else, including
+# an environment with no mode recorded or a link that doesn't say which cluster it is, is left
+# running with its link and record removed; this finishes instead of failing, because the hourly
+# sweep retries a destroy that fails, forever.
+OWN_CLUSTER=false
+if [ "$RECORDED_MODE" = "cloud" ] && [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then
+    OWN_CLUSTER=true
+fi
+if [ -n "$CLUSTER_ID" ] && [ "$OWN_CLUSTER" != "true" ]; then
+    printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', which isn't this capsule's own (recorded mode: ${RECORDED_MODE:-none}). Leaving that cluster running and removing only the environment's link and record.${NC}\n"
     # A workflow annotation, so it is on the run's summary and not only in the step log. The workloads this
     # capsule deployed to that cluster are left too: if it was deployed in cluster mode, unload them.
     printf '::warning title=Cluster left running::Environment %s is linked to cluster %s, which is not this capsule'"'"'s own (%s). It and anything deployed to it were left in place; if it really is this capsule'"'"'s own, delete it from Monk.\n' "$ENVIRONMENT_NAME" "${LINKED_CLUSTER_NAME:-unknown}" "$CLUSTER_NAME"

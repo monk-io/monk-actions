@@ -588,6 +588,7 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
       settings: {
         capsule: {
           source: "dynenv",
+          mode: "cloud",
           branch: $branch,
           repository: $repository,
           githubEnvironment: $githubEnvironment,
@@ -643,6 +644,7 @@ else
           settings: {
             capsule: {
               source: "dynenv",
+              mode: "cloud",
               branch: $branch,
               repository: $repository,
               githubEnvironment: $githubEnvironment,
