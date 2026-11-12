@@ -77,7 +77,7 @@ called() { grep -c "$1" "$STUB_LOG"; }
 
 # A cluster the environment is linked to but that isn't the capsule's own (a shared cluster that
 # another mode's environments use) must not be nuked or deleted; the environment is still cleaned.
-check "shared cluster: cleanup succeeds" 0 "$(run shared-cluster access)"
+check "shared cluster: cleanup succeeds" 0 "$(run shared-cluster access cloud)"
 check "shared cluster: not nuked" 0 "$(called 'cluster nuke')"
 check "shared cluster: platform record kept" 0 "$(called 'DELETE https://api/orgs/o/clusters/')"
 check "shared cluster: environment unlinked and deleted" 2 "$(grep -c 'DELETE https://api/orgs/o/projects/p/environments/feat' "$STUB_LOG")"
@@ -85,29 +85,29 @@ check "shared cluster: says so" 1 "$(grep -c "Leaving that cluster running" "$T/
 check "shared cluster: annotated on the run" 1 "$(grep -c '^::warning title=Cluster left running::' "$T/out")"
 
 # A link that doesn't say which cluster it is can't be shown to be the capsule's own.
-printf '{"cluster":{"clusterId":"cid","monkcode":"mc"}}' > "$ENV_JSON"
+printf '{"cluster":{"clusterId":"cid","monkcode":"mc"},"settings":{"capsule":{"mode":"cloud"}}}' > "$ENV_JSON"
 : > "$STUB_LOG"; MONK_FAILURE=access sh "$SCRIPT" > "$T/out" 2>&1
 check "unnamed cluster: not nuked, record kept" 00 "$(called 'cluster nuke')$(called 'DELETE https://api/orgs/o/clusters/')"
 
 # The capsule's own cluster that refuses access is not gone: the record stays and cleanup fails.
-rc=$(run proj-feat access)
+rc=$(run proj-feat access cloud)
 check "own cluster, access refused: cleanup fails" 1 "$rc"
 check "own cluster, access refused: not called gone" 0 "$(grep -c 'Cluster nuked' "$T/out")"
 check "own cluster, access refused: platform record kept" 0 "$(called 'DELETE https://api/orgs/o/clusters/')"
 
 # The capsule's own cluster that no longer answers is gone: its record is removed.
-rc=$(run proj-feat refused)
+rc=$(run proj-feat refused cloud)
 check "own cluster, gone: cleanup succeeds" 0 "$rc"
 check "own cluster, gone: platform record deleted" 1 "$(called 'DELETE https://api/orgs/o/clusters/cid')"
 
-# Provision records the mode, and it can only protect a cluster, never authorize destroying one.
-# One cluster named like the capsule's own: recorded "cluster", or a mode this script doesn't know,
-# is left alone; recorded "cloud" or nothing recorded is destroyed.
-for mode in cluster shared Cluster; do
+# The recorded mode has to be "cloud" for the capsule's own cluster to be destroyed: "cluster", a mode
+# this script doesn't know, or nothing recorded (an environment provisioned before the mode was
+# recorded) leaves a cluster named like the capsule's own running.
+for mode in cluster shared Cluster ""; do
     rc=$(run proj-feat access "$mode")
-    check "recorded '$mode', named like the capsule's own: cleanup finishes" 0 "$rc"
-    check "recorded '$mode', named like the capsule's own: not nuked" 0 "$(called 'cluster nuke')"
-    check "recorded '$mode', named like the capsule's own: record kept" 0 "$(called 'DELETE https://api/orgs/o/clusters/')"
+    check "recorded '${mode:-nothing}', named like the capsule's own: cleanup finishes" 0 "$rc"
+    check "recorded '${mode:-nothing}', named like the capsule's own: not nuked" 0 "$(called 'cluster nuke')"
+    check "recorded '${mode:-nothing}', named like the capsule's own: record kept" 0 "$(called 'DELETE https://api/orgs/o/clusters/')"
 done
 rc=$(run proj-feat refused cloud)
 check "recorded cloud, named like the capsule's own: destroyed" 0 "$rc"

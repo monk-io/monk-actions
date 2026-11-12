@@ -72,18 +72,16 @@ LINKED_CLUSTER_NAME=$(jq -r '.cluster.name // empty' /tmp/env_response.json)
 RECORDED_MODE=$(jq -r '.settings.capsule.mode // empty' /tmp/env_response.json)
 
 # This script destroys the cluster the environment is linked to, which is only right when that
-# cluster is the capsule's own, so it has to be named like the capsule's own: a shared cluster, or a
-# link that doesn't say which cluster it is, is left running. A recorded mode can only protect:
-# provision records "cluster" for a shared cluster, which is never destroyed even if it is named like
-# the capsule's own, and a mode this script doesn't know is treated the same. "cloud" alone doesn't
-# authorize a destroy, since the environment may have been relinked since. What is left running keeps
-# nothing but its removed link and record; this finishes instead of failing, because the hourly sweep
-# retries a destroy that fails, forever.
+# cluster is the capsule's own: provision recorded "cloud" for the environment (a shared cluster is
+# recorded "cluster", and a mode this script doesn't know is no better) and the linked cluster is
+# named like the capsule's own, in case the environment was relinked since. Anything else, including
+# an environment with no mode recorded or a link that doesn't say which cluster it is, is left
+# running with its link and record removed; this finishes instead of failing, because the hourly
+# sweep retries a destroy that fails, forever.
 OWN_CLUSTER=false
-case "$RECORDED_MODE" in
-    ""|cloud) if [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then OWN_CLUSTER=true; fi ;;
-    *) ;;
-esac
+if [ "$RECORDED_MODE" = "cloud" ] && [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then
+    OWN_CLUSTER=true
+fi
 if [ -n "$CLUSTER_ID" ] && [ "$OWN_CLUSTER" != "true" ]; then
     printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', which isn't this capsule's own (recorded mode: ${RECORDED_MODE:-none}). Leaving that cluster running and removing only the environment's link and record.${NC}\n"
     # A workflow annotation, so it is on the run's summary and not only in the step log. The workloads this
