@@ -33,6 +33,13 @@ inputs:
     description: "Tag identifying which peers form the capsule pool (cluster mode)."
     required: false
     default: "capsule-pool"
+  image-suffix:
+    description: "Cluster capsules, which share one registry: the capsule environment that build-images was given. Points the templates the MANIFEST loads at the image tags it pushed (<tag>-<image-suffix>). Empty: the tags as written."
+    required: false
+    default: ""
+  workload-secrets:
+    description: "Multiline KEY=value pairs of this branch's own secret values (one per line), set on the cluster before the workload updates. Pass them from the branch's GitHub environment: they override the shared values provision seeded. An empty value is skipped."
+    required: false
   health-check-path:
     description: "Path on the preview URL that must answer 2xx/3xx before the deploy succeeds (e.g. /health). Empty: the preview root is probed and a dead preview is only a warning."
     required: false
@@ -58,6 +65,8 @@ runs:
     BRANCH_TAG: ${{ inputs.branch-tag }}
     CAPSULE_MODE: ${{ inputs.capsule-mode }}
     PEER_POOL_TAG: ${{ inputs.peer-pool-tag }}
+    IMAGE_SUFFIX: ${{ inputs.image-suffix }}
+    WORKLOAD_SECRETS: ${{ inputs.workload-secrets }}
     HEALTH_CHECK_PATH: ${{ inputs.health-check-path }}
     HEALTH_CHECK_TIMEOUT: ${{ inputs.health-check-timeout }}
     MONK_REPO: ${{ inputs.capsule-mode == 'cluster' && inputs.environment-name || '' }}

@@ -5,6 +5,10 @@
 # callers may override PARSE_MANIFEST for local testing.
 PARSE_MANIFEST="${PARSE_MANIFEST:-/opt/monk-actions/scripts/parse-manifest.sh}"
 
+# With IMAGE_SUFFIX set (cluster capsules, which share one registry) each image is pushed as
+# <tag>-<suffix>, and deploy points the templates at it.
+. "$(dirname "$0")/image-tag.sh"
+
 # Validate MANIFEST exists
 if [ ! -f "MANIFEST" ]; then
     echo "Error: MANIFEST file not found"
@@ -46,6 +50,14 @@ build_image() {
         echo "Source: $source"
         echo "Dockerfile: $dockerfile"
         return 1
+    fi
+
+    if [ -n "$IMAGE_SUFFIX" ]; then
+        if branch_tag=$(branch_image_tag "$tag" "$IMAGE_SUFFIX"); then
+            tag="$branch_tag"
+        else
+            echo "Warning: image $tag can't get a branch tag (digest, or a tag longer than 128 characters); pushing it as written"
+        fi
     fi
 
     echo "Building image $tag from source: $source, dockerfile: $dockerfile"

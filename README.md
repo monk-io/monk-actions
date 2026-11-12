@@ -94,6 +94,27 @@ answer, which the deploy's preview check reports; with `health-check-path` set, 
 The variable is only passed when a template loaded by the MANIFEST (`LOAD`, or a `DIRS` sub-MANIFEST) declares `ingress-host:`, so existing projects are
 unaffected until they add it.
 
+Image tags on a shared cluster. Branches on one cluster push to its one registry, so an image tag
+that doesn't change between branches (`latest`) would be overwritten by whichever branch built last,
+and a node that already has it keeps running that build. Pass the capsule environment as
+`image-suffix` to both `build-images` and `deploy`: `build-images` pushes each MANIFEST `IMAGE` as
+`<tag>-<suffix>` (`app:latest` becomes `app:latest-feat-a`) and `deploy` points the templates the
+MANIFEST loads (`LOAD`, or a `DIRS` sub-MANIFEST) at it before loading them, matching `image: app:latest`
+exactly (and `image: app` when the tag is `latest`). The tag can also be its own key: `image: app` with
+`image-tag: v2` next to it becomes `image-tag: v2-feat-a` when `v2` is the tag built. No template
+change is needed. An image from a MANIFEST `IMAGE` line that isn't written out as `image: ...` in any loaded template
+(for example its tag comes from a variable, as in `image-tag: <- $tag`) can't be rewritten: deploy warns, and that image stays shared. Both actions must get the same value, in any mode; leave
+it empty for cloud capsules, where each branch has its own registry.
+
+A branch's own secret values. `deploy` takes `workload-secrets` (single-line `KEY=value` lines, as for `provision`; capsules only) and sets them on
+the cluster before the workload updates, over the shared values `provision` seeded. Run `deploy` in
+the branch's GitHub environment (`capsule-<environment>`) and pass `KEY=${{ secrets.KEY }}`: a secret
+set in that environment is the branch's own, otherwise the value is empty and skipped, so the shared
+one stays. Deleting the environment secret returns the branch to the shared value on its next run
+with `provision`: that run re-seeds the shared value first, and `deploy` then skips the now empty
+branch one. `deploy` never removes a value by itself, so a secret with no shared value keeps the
+branch's last value on the cluster until it is provisioned again.
+
 Static CI/CD deploy (no capsule environments):
 
 ```yaml
@@ -123,6 +144,16 @@ jobs:
 ```
 
 See the [Monk VS Code extension](https://github.com/monk-io/vscode-monk) repo for a complete reference workflow including build, deploy, and cleanup stages.
+
+## Tests
+
+```sh
+sh tests/image-tag.test.sh
+sh tests/deploy.test.sh   # needs jq
+sh tests/cleanup-cloud.test.sh   # needs jq
+```
+
+They also run under Alpine, which is what the actions image uses.
 
 ## Secrets pattern
 
