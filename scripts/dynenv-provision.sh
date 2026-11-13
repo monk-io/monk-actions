@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
+. "$(dirname "$0")/monk-json.sh"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -94,23 +95,15 @@ sync_cluster_users() {
         return 0
     fi
 
-    if ! jq -r '
-        def users_array:
-          if type == "array" then .
-          elif type == "object" and (.users | type) == "array" then .users
-          elif type == "object" and (.Users | type) == "array" then .Users
-          elif type == "object" and (.data | type) == "array" then .data
-          elif type == "object" and (.result | type) == "array" then .result
-          else []
-          end;
-        users_array[]? |
+    if ! monk_users_array < /tmp/cluster_users_existing.json | jq -r '
+        .[] |
         [
           ((.email // .Email // "") | tostring | ascii_downcase),
           ((.role // .Role // "user") | tostring | ascii_downcase)
         ] |
         select(.[0] != "") |
         @tsv
-      ' /tmp/cluster_users_existing.json | sort -u > /tmp/cluster_users_present.tsv; then
+      ' | sort -u > /tmp/cluster_users_present.tsv; then
         printf "${YELLOW}Warning: Failed to parse existing cluster users. Continuing without sync.${NC}\n"
         return 0
     fi
@@ -207,8 +200,7 @@ trap cleanup_on_failure EXIT
 ingress_enabled() {
     plugins_out=$(monk --json plugins list 2>&1 | tail -n 1)
     [ -n "$plugins_out" ] || return 1
-    printf '%s' "$plugins_out" \
-        | jq -e '[(.data.plugins // .plugins // [])[] | select(.name == "ingress" and .enabled == true)] | length > 0' >/dev/null 2>&1
+    printf '%s' "$plugins_out" | monk_plugin_enabled ingress
 }
 
 # Enable the ingress plugin, retrying while the system templates sync on a
@@ -454,7 +446,7 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
 
         # A.6.1 Ensure a peer has the "system" tag (registry runs on the system-tagged peer)
         printf "${GREEN}Ensuring system tag on a cluster peer...${NC}\n"
-        PEERS_JSON=$(monk --json cluster peers)
+        PEERS_JSON=$(monk_peers_json)
         SYSTEM_PEER_ID=$(echo "$PEERS_JSON" | jq -r '[.[] | select(.tags != null and (.tags | contains(["system"])))][0].id // empty')
         if [ -z "$SYSTEM_PEER_ID" ]; then
             SYSTEM_PEER_ID=$(echo "$PEERS_JSON" | jq -r '[.[] | select(.name != "local")][0].id // empty')
