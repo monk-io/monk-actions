@@ -1,5 +1,6 @@
 #!/bin/sh
 set +e
+. "$(dirname "$0")/monk-json.sh"
 
 # Determine a preview URL for the deployed capsule, writing `preview-url=<value>`
 # (and the older `url=<value>`) to $GITHUB_OUTPUT when found, and the bare URL to
@@ -54,12 +55,12 @@ fi
 
 # Fallback for clusters where the endpoint resource is not populated yet.
 if [ -z "$PREVIEW_URL" ]; then
-    DOMAIN=$(monk cluster peers --json | jq -r '
-        [.[] | select(.domain != "" and (.domain | endswith(".monk.local") | not) and (.tags == null or ((.tags | index("system")) == null)))][0].domain // empty
+    DOMAIN=$(monk_peers_json | jq -r '
+        [.[] | select((.domain // "") != "" and (.domain | endswith(".monk.local") | not) and (.tags == null or ((.tags | index("system")) == null)))][0].domain // empty
     ')
     if [ -z "$DOMAIN" ]; then
-        DOMAIN=$(monk cluster peers --json | jq -r '
-            [.[] | select(.domain != "" and (.domain | endswith(".monk.local") | not))][0].domain // empty
+        DOMAIN=$(monk_peers_json | jq -r '
+            [.[] | select((.domain // "") != "" and (.domain | endswith(".monk.local") | not))][0].domain // empty
         ')
     fi
     if [ -n "$DOMAIN" ]; then

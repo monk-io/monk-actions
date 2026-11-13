@@ -1,5 +1,6 @@
 #!/bin/sh
 set -e
+. "$(dirname "$0")/monk-json.sh"
 
 # Fetch capsule metadata (monkcode, JIT tokens, registry credentials) and
 # write each to $GITHUB_OUTPUT so downstream jobs/actions can consume them.
@@ -98,14 +99,15 @@ if ! REGISTRY_JSON=$(monk --json secrets get -r system/registry registry-auth 2>
     exit 1
 fi
 echo "Registry secret response length: ${#REGISTRY_JSON}"
-REGISTRY_ADDRESS=$(echo "$REGISTRY_JSON" | jq -r '.message // empty' | jq -r '.address // empty')
-REGISTRY_USERNAME=$(echo "$REGISTRY_JSON" | jq -r '.message // empty' | jq -r '.username // empty')
-REGISTRY_PASSWORD=$(echo "$REGISTRY_JSON" | jq -r '.message // empty' | jq -r '.password // empty')
+REGISTRY_SECRET=$(echo "$REGISTRY_JSON" | monk_secret_value) || REGISTRY_SECRET=""
+REGISTRY_ADDRESS=$(echo "$REGISTRY_SECRET" | jq -r '.address // empty') || REGISTRY_ADDRESS=""
+REGISTRY_USERNAME=$(echo "$REGISTRY_SECRET" | jq -r '.username // empty') || REGISTRY_USERNAME=""
+REGISTRY_PASSWORD=$(echo "$REGISTRY_SECRET" | jq -r '.password // empty') || REGISTRY_PASSWORD=""
 
 if [ -z "$REGISTRY_ADDRESS" ] || [ -z "$REGISTRY_USERNAME" ] || [ -z "$REGISTRY_PASSWORD" ]; then
     echo "::error::Failed to parse registry credentials from cluster secrets"
     echo "Address: ${REGISTRY_ADDRESS:-(empty)}, Username: ${REGISTRY_USERNAME:-(empty)}, Password set: $([ -n "$REGISTRY_PASSWORD" ] && echo yes || echo no)"
-    echo "Raw jq parse of .message: $(echo "$REGISTRY_JSON" | jq -r '.message // empty' 2>&1 | head -c 200)"
+    echo "Registry secret has a value: $([ -n "$REGISTRY_SECRET" ] && echo yes || echo no)"
     exit 1
 fi
 echo "Registry credentials retrieved: $REGISTRY_ADDRESS"

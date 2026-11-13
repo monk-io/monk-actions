@@ -15,4 +15,4 @@ jobs:
           docker run --rm -v "$PWD":/w:ro alpine:3 sh -c '
             apk add --no-cache jq >/dev/null
             cp -r /w /t && cd /t
-            sh tests/image-tag.test.sh && sh tests/deploy.test.sh && sh tests/cleanup-cloud.test.sh'
+            sh tests/image-tag.test.sh && sh tests/deploy.test.sh && sh tests/cleanup-cloud.test.sh && sh tests/json-shapes.test.sh'

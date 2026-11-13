@@ -166,6 +166,7 @@ Workload secrets — whose names depend on the user's manifest — are passed as
 - Immutable tags: `v1.2.3`, `v1.2.3-rc.1` — pin these in production for reproducibility.
 - Floating major tag: `v1` — moves with each non-pre-release `vX.Y.Z` release.
 - The bundled Monk CLI version is pinned via `MONK_CI_VERSION` and bumped automatically when monk releases a new `monk-ci` image.
+- The scripts read the CLI's `--json` output through `scripts/monk-json.sh`, which accepts both Monk 4's envelope (`{"data":{"items":[…]},"ok":true,…}`) and Monk 3's bare arrays and objects, so a rebuild on either CLI works. `tests/json-shapes.test.sh` checks both. New code that parses `--json` output should go through those helpers.
 
 ## Proprietary components
 

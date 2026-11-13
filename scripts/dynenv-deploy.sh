@@ -9,6 +9,7 @@ NC='\033[0m'
 printf "${GREEN}Monk Deploy${NC}\n"
 
 . "$(dirname "$0")/image-tag.sh"
+. "$(dirname "$0")/monk-json.sh"
 
 # Validate required env vars
 # MONKCODE and MONK_SERVICE_TOKEN are set by the entrypoint before invoking this script
@@ -68,7 +69,7 @@ ingress_host() {
         ""|-*|*-|*[!a-z0-9-]*) return 0 ;;
     esac
     [ "${#label}" -le 63 ] || return 0
-    domain=$(monk --json cluster peers 2>/dev/null | jq -r '
+    domain=$(monk_peers_json 2>/dev/null | jq -r '
         [.[] | select((.domain // "") != "" and ((.domain // "") | endswith(".monk.local") | not))]
         | sort_by([((.tags // []) | index("system")) == null, .domain]) | .[0].domain // empty
     ' 2>/dev/null) || domain=""
