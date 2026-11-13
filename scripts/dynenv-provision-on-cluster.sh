@@ -90,7 +90,10 @@ printf "${GREEN}Target cluster: $CLUSTER_NAME (ID: $CLUSTER_ID)${NC}\n"
 export MONK_SOCKET="monkcode://$MONKCODE"
 
 printf "${GREEN}Listing peers with pool tag '$PEER_POOL_TAG'...${NC}\n"
-PEERS_JSON=$(monk_peers_json)
+PEERS_JSON=$(monk_peers_json) || {
+    printf "${RED}Error: could not read the cluster's peers${NC}\n"
+    exit 1
+}
 POOL_COUNT=$(echo "$PEERS_JSON" | jq --arg tag "$PEER_POOL_TAG" '[.[] | select(.tags != null and (.tags | index($tag)))] | length')
 
 if [ "$POOL_COUNT" -eq 0 ]; then

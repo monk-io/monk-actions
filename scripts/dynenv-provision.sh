@@ -95,7 +95,11 @@ sync_cluster_users() {
         return 0
     fi
 
-    if ! monk_users_array < /tmp/cluster_users_existing.json | jq -r '
+    if ! existing_users=$(monk_users_array < /tmp/cluster_users_existing.json); then
+        printf "${YELLOW}Warning: Failed to parse existing cluster users. Continuing without sync.${NC}\n"
+        return 0
+    fi
+    printf '%s' "$existing_users" | jq -r '
         .[] |
         [
           ((.email // .Email // "") | tostring | ascii_downcase),
@@ -103,10 +107,7 @@ sync_cluster_users() {
         ] |
         select(.[0] != "") |
         @tsv
-      ' | sort -u > /tmp/cluster_users_present.tsv; then
-        printf "${YELLOW}Warning: Failed to parse existing cluster users. Continuing without sync.${NC}\n"
-        return 0
-    fi
+      ' | sort -u > /tmp/cluster_users_present.tsv
 
     added=0
     updated=0
@@ -446,7 +447,10 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
 
         # A.6.1 Ensure a peer has the "system" tag (registry runs on the system-tagged peer)
         printf "${GREEN}Ensuring system tag on a cluster peer...${NC}\n"
-        PEERS_JSON=$(monk_peers_json)
+        PEERS_JSON=$(monk_peers_json) || {
+            printf "${RED}Error: could not read the cluster's peers${NC}\n"
+            exit 1
+        }
         SYSTEM_PEER_ID=$(echo "$PEERS_JSON" | jq -r '[.[] | select(.tags != null and (.tags | contains(["system"])))][0].id // empty')
         if [ -z "$SYSTEM_PEER_ID" ]; then
             SYSTEM_PEER_ID=$(echo "$PEERS_JSON" | jq -r '[.[] | select(.name != "local")][0].id // empty')

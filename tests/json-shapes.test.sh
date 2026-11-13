@@ -73,4 +73,46 @@ eq "secret, Monk 3"           "$REG" "$(printf '%s' "$V3_SECRET" | monk_secret_v
 eq "secret, Monk 4 address"   "reg.example.com" "$(printf '%s' "$V4_SECRET" | monk_secret_value | jq -r '.address')"
 eq "secret, missing"          "" "$(printf '%s' '{"data":{}}' | monk_secret_value)"
 
+# ── errors: a helper fails on output it can't read, instead of answering with an empty list
+ERR='{"command":"cluster peers","error":{"message":"denied"},"ok":false,"type":"error","v":1}'
+ok_status() { # name command...  (expects success)
+    n="$1"; shift
+    if "$@" > /dev/null 2>&1; then echo "ok   $n"; else echo "FAIL $n (failed)"; FAILS=$((FAILS + 1)); fi
+}
+fails() { # name command...  (expects failure)
+    n="$1"; shift
+    if "$@" > /dev/null 2>&1; then echo "FAIL $n (succeeded)"; FAILS=$((FAILS + 1)); else echo "ok   $n"; fi
+}
+feed() { printf '%s' "$1" | "$2"; }
+fails "peers, error envelope"      feed "$ERR" monk_peers_array
+fails "peers, not JSON"            feed "error: daemon unreachable" monk_peers_array
+fails "peers, a bare string"       feed '"cluster peers"' monk_peers_array
+fails "users, error envelope"      feed "$ERR" monk_users_array
+fails "users, not JSON"            feed "error: daemon unreachable" monk_users_array
+fails "secret, error envelope"     feed "$ERR" monk_secret_value
+fails "secret, not JSON"           feed "error: daemon unreachable" monk_secret_value
+ok_status "peers, Monk 4 null data"  feed '{"ok":true,"data":null}' monk_peers_array
+
+# peers_json fails when the CLI prints an error envelope (and exits 0)
+T=$(mktemp -d)
+printf '#!/bin/sh\nprintf "%%s" "$STUB_OUT"\n' > "$T/monk"
+chmod +x "$T/monk"
+STUB_OUT="$ERR" PATH="$T:$PATH" fails "peers_json, error envelope from a succeeding CLI" monk_peers_json
+rm -rf "$T"
+
+# the status is what callers test: a failure must not be hidden by a later pipeline stage
+if existing=$(printf '%s' 'error: daemon unreachable' | monk_users_array 2>/dev/null); then
+    echo "FAIL users parse failure not reported"; FAILS=$((FAILS + 1))
+else
+    echo "ok   users parse failure is reported through a command substitution"
+fi
+
+# plugins: a bare array (any CLI), an error envelope, objects
+eq "plugins, bare array enabled"   "yes" "$(yn '[{"name":"ingress","enabled":true}]')"
+eq "plugins, error envelope"       "no"  "$(yn "$ERR")"
+eq "plugins, null items"           "no"  "$(yn '{"data":{"items":null}}')"
+
+# secrets: a value that isn't a string is printed as JSON on one line
+eq "secret, object value"          '{"a":1}' "$(printf '%s' '{"data":{"value":{"a":1}}}' | monk_secret_value)"
+
 [ "$FAILS" -eq 0 ] && echo "all passed" || { echo "$FAILS failed"; exit 1; }
