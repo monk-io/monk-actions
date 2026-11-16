@@ -36,10 +36,12 @@ eq "trailing newlines kept" "[k=v
 run '{"unset": "" }'
 eq "empty json value reaches the callback empty" "[unset=]" "$OUT"
 
-run '{"n": null }
-{"two": "a", "x": "b" }
+run '{"n": null }'
+eq "null (an unset secret) arrives empty, name kept" "[n=]" "$OUT"
+
+run '{"two": "a", "x": "b" }
 {"a-b": "ok" }'
-eq "null and multi-key skipped" "[a-b=ok]" "$OUT"
+eq "multi-key skipped" "[a-b=ok]" "$OUT"
 
 run 'NOEQUALS
 bad name=1

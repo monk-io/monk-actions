@@ -8,7 +8,8 @@
 
 # each_workload_secret CALLBACK: calls `CALLBACK NAME VALUE` for each entry, in the current shell
 # (a callback can `exit`) and with stdin closed. Malformed lines are skipped with a warning that
-# never repeats the line. VALUE may be empty; a seeding callback skips those.
+# never repeats the line. VALUE is empty for an unset secret (GitHub renders it as null), so cleanup
+# still gets its name; a seeding callback skips an empty value.
 each_workload_secret() {
     _ws_cb="$1"
     [ -n "${WORKLOAD_SECRETS:-}" ] || return 0
@@ -22,13 +23,13 @@ each_workload_secret() {
                     return 1
                 fi
                 _ws_key=$(printf '%s' "$_ws_line" |
-                    jq -r 'if type == "object" and length == 1 and (to_entries[0].value | type) == "string" then keys[0] else empty end' 2>/dev/null) || _ws_key=""
+                    jq -r 'if type == "object" and length == 1 and ((to_entries[0].value | type) == "string" or to_entries[0].value == null) then keys[0] else empty end' 2>/dev/null) || _ws_key=""
                 if [ -z "$_ws_key" ]; then
                     printf "${YELLOW:-}Warning: skipping a workload-secrets line that isn't {\"NAME\": \"value\"}${NC:-}\n"
                     continue
                 fi
                 # the sentinel keeps $(...) from trimming a value's trailing newlines
-                _ws_val=$(printf '%s' "$_ws_line" | jq -j '.[]' 2>/dev/null; printf x)
+                _ws_val=$(printf '%s' "$_ws_line" | jq -j '.[] // ""' 2>/dev/null; printf x)
                 _ws_val=${_ws_val%x}
                 ;;
             *=*)
