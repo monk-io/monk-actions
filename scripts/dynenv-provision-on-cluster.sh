@@ -7,6 +7,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+. "$(dirname "$0")/workload-secrets.sh"
+
 printf "${GREEN}Monk Capsules - Provision on Existing Cluster${NC}\n"
 
 # Validate required env vars
@@ -104,23 +106,19 @@ printf "${GREEN}Found $POOL_COUNT peer(s) in pool — deploying across all.${NC}
 
 # ============================================================================
 # Step 3: Seed scoped secrets for this environment
-# WORKLOAD_SECRETS is a multiline KEY=value bag (one per line).
+# WORKLOAD_SECRETS: see workload-secrets.sh.
 # ============================================================================
+seed_scoped_secret() {
+    if [ -n "$2" ]; then
+        monk secrets add --scope "$ENVIRONMENT_NAME" "$1=$2"
+    else
+        printf "${YELLOW}Warning: value for $1 is empty, skipping${NC}\n"
+    fi
+}
+
 if [ -n "$WORKLOAD_SECRETS" ]; then
     printf "${GREEN}Seeding scoped secrets for environment '$ENVIRONMENT_NAME'...${NC}\n"
-    printf '%s\n' "$WORKLOAD_SECRETS" | while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        KEY="${line%%=*}"
-        VALUE="${line#*=}"
-        if [ -z "$KEY" ]; then
-            continue
-        fi
-        if [ -n "$VALUE" ]; then
-            monk secrets add --scope "$ENVIRONMENT_NAME" "$KEY=$VALUE"
-        else
-            printf "${YELLOW}Warning: value for $KEY is empty, skipping${NC}\n"
-        fi
-    done
+    each_workload_secret seed_scoped_secret
     printf "${GREEN}Scoped secrets configured.${NC}\n"
 else
     printf "${YELLOW}No workload secrets to seed.${NC}\n"

@@ -10,6 +10,7 @@ printf "${GREEN}Monk Deploy${NC}\n"
 
 . "$(dirname "$0")/image-tag.sh"
 . "$(dirname "$0")/monk-json.sh"
+. "$(dirname "$0")/workload-secrets.sh"
 
 # Validate required env vars
 # MONKCODE and MONK_SERVICE_TOKEN are set by the entrypoint before invoking this script
@@ -84,33 +85,23 @@ if [ -n "$IMAGE_SUFFIX" ]; then
     rewrite_templates_for_branch "$IMAGE_SUFFIX"
 fi
 
-# WORKLOAD_SECRETS (single-line NAME=value lines) holds this branch's own values, set over the shared
+# WORKLOAD_SECRETS (see workload-secrets.sh) holds this branch's own values, set over the shared
 # ones provision seeded. An empty value means the branch has none, so it is skipped.
 seed_workload_secrets() {
-    [ -n "$WORKLOAD_SECRETS" ] || return 0
-    while IFS= read -r line; do
-        line=${line%"$(printf '\r')"}   # a value edited on Windows must not carry its line ending
-        [ -z "$line" ] && continue
-        case "$line" in
-            *=*) ;;
-            *) printf "${YELLOW}Warning: skipping a workload-secrets line that isn't NAME=value${NC}\n"; continue ;;
-        esac
-        KEY="${line%%=*}"
-        VALUE="${line#*=}"
-        case "$KEY" in
-            ""|*[!A-Za-z0-9_-]*) printf "${YELLOW}Warning: skipping a workload-secrets line with an invalid name${NC}\n"; continue ;;
-        esac
-        [ -n "$VALUE" ] || continue
-        # Both streams are dropped: a failure could echo its arguments, and so the value, into the log.
-        if [ -n "$MONK_REPO" ]; then
-            monk secrets add --scope "$MONK_REPO" "$KEY=$VALUE" > /dev/null 2>&1 || { printf "${RED}Error: could not set secret $KEY${NC}\n"; exit 1; }
-        else
-            monk secrets add -g "$KEY=$VALUE" > /dev/null 2>&1 || { printf "${RED}Error: could not set secret $KEY${NC}\n"; exit 1; }
-        fi
-        printf "${GREEN}Secret $KEY set from this branch's environment${NC}\n"
-    done <<EOF
-$WORKLOAD_SECRETS
-EOF
+    each_workload_secret seed_workload_secret
+}
+
+seed_workload_secret() {
+    KEY="$1"
+    VALUE="$2"
+    [ -n "$VALUE" ] || return 0
+    # Both streams are dropped: a failure could echo its arguments, and so the value, into the log.
+    if [ -n "$MONK_REPO" ]; then
+        monk secrets add --scope "$MONK_REPO" "$KEY=$VALUE" > /dev/null 2>&1 || { printf "${RED}Error: could not set secret $KEY${NC}\n"; exit 1; }
+    else
+        monk secrets add -g "$KEY=$VALUE" > /dev/null 2>&1 || { printf "${RED}Error: could not set secret $KEY${NC}\n"; exit 1; }
+    fi
+    printf "${GREEN}Secret $KEY set from this branch's environment${NC}\n"
 }
 
 # When MONK_REPO is set (shared cluster), load under a dedicated repo namespace.
