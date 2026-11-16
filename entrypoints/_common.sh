@@ -13,7 +13,8 @@ _kv_export() {
 }
 
 # Parse a multiline KEY=value bag and export each entry as an env var in the
-# current shell. A line starting NAME= (NAME a valid identifier) begins an
+# current shell. A line starting NAME= (NAME upper-case letters, digits and '_', as every provider
+# credential is named) begins an
 # entry and splits on the first '=' only, so values containing '=' are kept
 # verbatim. Any other line continues the previous entry's value after a
 # newline, so multiline values (a pretty-printed service-account JSON, an
@@ -31,10 +32,10 @@ load_kv_bag() {
     _kv_val=""
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
-            [A-Za-z_]*=*)
+            [A-Z_]*=*)
                 key="${line%%=*}"
                 case "$key" in
-                    *[!A-Za-z0-9_]*) key="" ;;
+                    *[!A-Z0-9_]*) key="" ;;
                 esac
                 ;;
             *) key="" ;;

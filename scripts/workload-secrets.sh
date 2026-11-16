@@ -17,6 +17,10 @@ each_workload_secret() {
         [ -z "$_ws_line" ] && continue
         case "$_ws_line" in
             "{"*)
+                if ! command -v jq > /dev/null 2>&1; then
+                    printf "${RED:-}Error: jq is needed to read workload-secrets and was not found${NC:-}\n"
+                    return 1
+                fi
                 _ws_key=$(printf '%s' "$_ws_line" |
                     jq -r 'if type == "object" and length == 1 and (to_entries[0].value | type) == "string" then keys[0] else empty end' 2>/dev/null) || _ws_key=""
                 if [ -z "$_ws_key" ]; then

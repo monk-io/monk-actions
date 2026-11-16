@@ -31,4 +31,14 @@ D=1"
 eq "leading junk ignored" "1" "$D"
 
 
+load_kv_bag "TOKEN=-----BEGIN-----
+abc==
+Zm9vYmFy==
+-----END-----"
+eq "base64 lines ending in = stay in the value" "-----BEGIN-----
+abc==
+Zm9vYmFy==
+-----END-----" "$TOKEN"
+eq "no variable named after a base64 line" "" "${abc:-}${Zm9vYmFy:-}"
+
 [ "$FAILS" -eq 0 ] || exit 1
