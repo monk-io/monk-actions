@@ -7,6 +7,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+. "$(dirname "$0")/workload-secrets.sh"
+
 printf "${GREEN}Monk Capsules - Provision${NC}\n"
 printf "${GREEN}Creating cluster: $CLUSTER_NAME${NC}\n"
 
@@ -532,23 +534,18 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
 fi
 
 # A.7 Inject workload secrets
-# WORKLOAD_SECRETS is a multiline KEY=value bag (one per line, value typically a
-# ${{ secrets.X }} interpolation from the consuming workflow).
+# WORKLOAD_SECRETS: see workload-secrets.sh.
+seed_global_secret() {
+    if [ -n "$2" ]; then
+        monk secrets add -g "$1=$2"
+    else
+        printf "${YELLOW}Warning: value for $1 is empty, skipping${NC}\n"
+    fi
+}
+
 if [ -n "$WORKLOAD_SECRETS" ]; then
     printf "${GREEN}Seeding workload secrets into cluster...${NC}\n"
-    printf '%s\n' "$WORKLOAD_SECRETS" | while IFS= read -r line; do
-        [ -z "$line" ] && continue
-        KEY="${line%%=*}"
-        VALUE="${line#*=}"
-        if [ -z "$KEY" ]; then
-            continue
-        fi
-        if [ -n "$VALUE" ]; then
-            monk secrets add -g "$KEY=$VALUE"
-        else
-            printf "${YELLOW}Warning: value for $KEY is empty, skipping${NC}\n"
-        fi
-    done
+    each_workload_secret seed_global_secret
     printf "${GREEN}Workload secrets configured.${NC}\n"
 else
     printf "${YELLOW}No workload secrets to seed.${NC}\n"

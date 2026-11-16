@@ -60,6 +60,14 @@ web:
 monk update -t branch-feat-a -s environment=feat-a sample/stack
 monk ps" "$(cat "$STUB_LOG")"
 
+# a multiline value arrives as a JSON line and is set whole
+export WORKLOAD_SECRETS='{"key": "line1\nline2" }
+greeting=hi'
+eq "multiline deploy succeeds" 0 "$(run)"
+eq "multiline value set whole" "monk secrets add -g key=line1
+line2
+monk secrets add -g greeting=hi" "$(sed -n 1,3p "$STUB_LOG")"
+
 # static: the image suffix still applies (build-images doesn't know the mode), secrets are ignored
 export CAPSULE_MODE=static IMAGE_SUFFIX=feat-a
 eq "static deploy succeeds" 0 "$(run)"

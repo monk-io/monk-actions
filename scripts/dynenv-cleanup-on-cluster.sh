@@ -6,6 +6,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+. "$(dirname "$0")/workload-secrets.sh"
+
 printf "${GREEN}Monk Capsules - Cleanup on Existing Cluster${NC}\n"
 
 # Validate required env vars
@@ -123,15 +125,13 @@ else
             printf "${YELLOW}Warning: unload failed${NC}\n"
     fi
 
-    # Remove scoped secrets — WORKLOAD_SECRETS is a multiline KEY=value bag; we only need the keys.
+    # Remove scoped secrets — WORKLOAD_SECRETS (see workload-secrets.sh): we only need the keys.
     # An absent key is fine; any other failure is reported after the rest were tried.
     if [ -n "$WORKLOAD_SECRETS" ]; then
         printf "${GREEN}Removing scoped secrets for '$ENVIRONMENT_NAME'...${NC}\n"
         SECRET_FAILED=""
-        while IFS= read -r line; do
-            [ -z "$line" ] && continue
-            KEY="${line%%=*}"
-            [ -z "$KEY" ] && continue
+        remove_scoped_secret() {
+            KEY="$1"
             if ! SECRET_OUT=$(monk secrets remove --scope "$ENVIRONMENT_NAME" "$KEY" 2>&1); then
                 case "$SECRET_OUT" in
                     *"not found in scope"*) printf "  Secret '$KEY' was already removed.\n" ;;
@@ -141,9 +141,8 @@ else
                         ;;
                 esac
             fi
-        done <<EOF
-$WORKLOAD_SECRETS
-EOF
+        }
+        each_workload_secret remove_scoped_secret
         if [ -n "$SECRET_FAILED" ]; then
             printf "${RED}Error: some scoped secrets were not removed; the capsule is kept so the cleanup can be retried${NC}\n"
             exit 1
