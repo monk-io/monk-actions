@@ -45,7 +45,10 @@ monk_users_array() {
 # stdin: the output of `monk --json plugins list`; exit status 0 when the plugin named $1 is
 # enabled. Empty, unreadable or error output is "not enabled".
 monk_plugin_enabled() {
-    jq -e --arg name "$1" '
+    # jq 1.6 (the image's) exits 0 on empty input, so empty output is checked for here.
+    _mpe_input=$(cat)
+    [ -n "$_mpe_input" ] || return 1
+    printf '%s' "$_mpe_input" | jq -e --arg name "$1" '
         (if type == "array" then .
          elif .ok == false then []
          else (.data.items // .data.plugins // .plugins // []) end)
