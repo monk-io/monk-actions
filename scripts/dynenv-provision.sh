@@ -437,11 +437,13 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
         CLUSTER_INFO=$(monk --json cluster info 2>&1 | tail -n 1)
         MONKCODE=$(echo "$CLUSTER_INFO" | jq -r '.data.monkcode')
         CLUSTER_ID=$(echo "$CLUSTER_INFO" | jq -r '.data.id')
-        OWN_CLUSTER_ID="$CLUSTER_ID"
 
         if [ -z "$MONKCODE" ] || [ "$MONKCODE" = "null" ]; then
             printf "${RED}Error: Failed to extract monkcode from cluster info${NC}\n"
             exit 1
+        fi
+        if [ -n "$CLUSTER_ID" ] && [ "$CLUSTER_ID" != "null" ]; then
+            OWN_CLUSTER_ID="$CLUSTER_ID"
         fi
         printf "${GREEN}Cluster ready. ID: $CLUSTER_ID${NC}\n"
 
@@ -589,13 +591,12 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
         capsule: {
           source: "dynenv",
           mode: "cloud",
-          ownClusterId: $ownClusterId,
           branch: $branch,
           repository: $repository,
           githubEnvironment: $githubEnvironment,
           status: $status,
           updatedAt: $now
-        }
+        } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end)
       }
     }')
 
@@ -647,13 +648,12 @@ else
             capsule: {
               source: "dynenv",
               mode: "cloud",
-              ownClusterId: $ownClusterId,
               branch: $branch,
               repository: $repository,
               githubEnvironment: $githubEnvironment,
               status: $status,
               updatedAt: $now
-            }
+            } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end)
           }
         }')
     HTTP_CODE=$(curl -s -o /tmp/env_response.json -w "%{http_code}" -X POST "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/environments" \
