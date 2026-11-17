@@ -65,10 +65,11 @@ export CLUSTER_NAME=proj-feat ENVIRONMENT_NAME=feat MONK_CAPSULE_TOKEN=t \
     MONK_SUBSCRIPTION_API_BASE=https://api MONK_AUTH_SERVICE_URL=https://auth \
     MONK_API_PREFIX=orgs/o MONK_PROJECT_SLUG=p CAPSULE_DELETE_RECORDS=true
 
-run() { # linked cluster name, failure kind, mode provision recorded (none when empty)
+run() { # linked cluster name, failure kind, mode provision recorded (none when empty), own cluster id recorded (none when empty)
     : > "$STUB_LOG"
     settings='{}'
     [ -z "${3:-}" ] || settings=$(printf '{"capsule":{"mode":"%s"}}' "$3")
+    [ -z "${4:-}" ] || settings=$(printf '{"capsule":{"mode":"%s","ownClusterId":"%s"}}' "$3" "$4")
     printf '{"cluster":{"name":"%s","clusterId":"cid","monkcode":"mc"},"settings":%s}' "$1" "$settings" > "$ENV_JSON"
     MONK_FAILURE="$2" sh "$SCRIPT" > "$T/out" 2>&1
     echo $?
@@ -99,6 +100,36 @@ check "own cluster, access refused: platform record kept" 0 "$(called 'DELETE ht
 rc=$(run proj-feat refused cloud)
 check "own cluster, gone: cleanup succeeds" 0 "$rc"
 check "own cluster, gone: platform record deleted" 1 "$(called 'DELETE https://api/orgs/o/clusters/cid')"
+
+# The cluster provision recorded as created for the environment is the capsule's own whatever the
+# running workflow computes as its name: a delete event runs the default branch's copy, whose name
+# prefix can differ from the copy that provisioned.
+rc=$(run other-prefix-feat refused cloud cid)
+check "recorded id matches, name differs: cleanup succeeds" 0 "$rc"
+check "recorded id matches, name differs: platform record deleted" 1 "$(called 'DELETE https://api/orgs/o/clusters/cid')"
+check "recorded id matches, name differs: named by what it is" 1 "$(grep -c 'Nuking cluster other-prefix-feat' "$T/out")"
+
+# A recorded id that isn't the linked cluster's means the environment was relinked since: left running,
+# even though the name matches.
+rc=$(run proj-feat access cloud other-id)
+check "recorded id differs, name matches: cleanup finishes" 0 "$rc"
+check "recorded id differs, name matches: not nuked" 0 "$(called 'cluster nuke')"
+check "recorded id differs, name matches: record kept" 0 "$(called 'DELETE https://api/orgs/o/clusters/')"
+
+# A blank recorded id (nothing recorded) is the legacy case: the name decides, as before.
+printf '{"cluster":{"name":"proj-feat","clusterId":"cid","monkcode":"mc"},"settings":{"capsule":{"mode":"cloud","ownClusterId":""}}}' > "$ENV_JSON"
+: > "$STUB_LOG"; MONK_FAILURE=refused sh "$SCRIPT" > "$T/out" 2>&1
+check "blank recorded id, name matches: the capsule's own, record deleted" 1 "$(called 'DELETE https://api/orgs/o/clusters/cid')"
+printf '{"cluster":{"name":"other-prefix-feat","clusterId":"cid","monkcode":"mc"},"settings":{"capsule":{"mode":"cloud","ownClusterId":""}}}' > "$ENV_JSON"
+: > "$STUB_LOG"; MONK_FAILURE=refused sh "$SCRIPT" > "$T/out" 2>&1
+check "blank recorded id, name differs: left running" 0 "$(called 'DELETE https://api/orgs/o/clusters/')"
+
+# A recorded id with no cluster linked leaves nothing to destroy or deregister here: the environment's
+# record is removed and no cluster is touched.
+printf '{"cluster":null,"settings":{"capsule":{"mode":"cloud","ownClusterId":"cid"}}}' > "$ENV_JSON"
+: > "$STUB_LOG"; MONK_FAILURE=refused sh "$SCRIPT" > "$T/out" 2>&1; rc=$?
+check "recorded id, no cluster linked: finishes" 0 "$rc"
+check "recorded id, no cluster linked: no cluster touched" 00 "$(called 'cluster nuke')$(called 'DELETE https://api/orgs/o/clusters/')"
 
 # The recorded mode has to be "cloud" for the capsule's own cluster to be destroyed: "cluster", a mode
 # this script doesn't know, or nothing recorded (an environment provisioned before the mode was

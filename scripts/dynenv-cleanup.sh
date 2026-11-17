@@ -70,18 +70,30 @@ MONKCODE=$(jq -r '.cluster.monkcode // empty' /tmp/env_response.json)
 CLUSTER_ID=$(jq -r '.cluster.clusterId // empty' /tmp/env_response.json)
 LINKED_CLUSTER_NAME=$(jq -r '.cluster.name // empty' /tmp/env_response.json)
 RECORDED_MODE=$(jq -r '.settings.capsule.mode // empty' /tmp/env_response.json)
+RECORDED_OWN_CLUSTER_ID=$(jq -r '.settings.capsule.ownClusterId // empty' /tmp/env_response.json)
 
 # This script destroys the cluster the environment is linked to, which is only right when that
 # cluster is the capsule's own: provision recorded "cloud" for the environment (a shared cluster is
-# recorded "cluster", and a mode this script doesn't know is no better) and the linked cluster is
-# named like the capsule's own, in case the environment was relinked since. Anything else, including
-# an environment with no mode recorded or a link that doesn't say which cluster it is, is left
-# running with its link and record removed; this finishes instead of failing, because the hourly
-# sweep retries a destroy that fails, forever.
+# recorded "cluster", and a mode this script doesn't know is no better) and the linked cluster is the
+# one provision recorded as created for it (ownClusterId), in case the environment was relinked since.
+# The recorded id, not a name recomputed here, is what identifies it: the name comes from the workflow
+# copy that is running, and a delete or PR-close event runs the default branch's copy, which can
+# differ from the copy that provisioned. An environment provisioned before the id was recorded falls
+# back to the name. Anything else, including an environment with no mode recorded or a link that
+# doesn't say which cluster it is, is left running with its link and record removed; this finishes
+# instead of failing, because the hourly sweep retries a destroy that fails, forever.
 OWN_CLUSTER=false
-if [ "$RECORDED_MODE" = "cloud" ] && [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then
-    OWN_CLUSTER=true
+if [ "$RECORDED_MODE" = "cloud" ]; then
+    if [ -n "$RECORDED_OWN_CLUSTER_ID" ]; then
+        [ "$CLUSTER_ID" = "$RECORDED_OWN_CLUSTER_ID" ] && OWN_CLUSTER=true
+    elif [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then
+        OWN_CLUSTER=true
+    fi
 fi
+# What this run reports and labels its token with is the cluster it is destroying. CLUSTER_NAME stays
+# what the workflow passed in.
+TARGET_CLUSTER_NAME="$CLUSTER_NAME"
+[ "$OWN_CLUSTER" != "true" ] || [ -z "$LINKED_CLUSTER_NAME" ] || TARGET_CLUSTER_NAME="$LINKED_CLUSTER_NAME"
 if [ -n "$CLUSTER_ID" ] && [ "$OWN_CLUSTER" != "true" ]; then
     printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', which isn't this capsule's own (recorded mode: ${RECORDED_MODE:-none}). Leaving that cluster running and removing only the environment's link and record.${NC}\n"
     # A workflow annotation, so it is on the run's summary and not only in the step log. The workloads this
@@ -155,14 +167,14 @@ else
     # so its exit code alone says nothing.
     printf "${GREEN}Minting JIT CLI token for cleanup...${NC}\n"
     CLI_PERMS="[\"manage:/projects/$MONK_PROJECT_SLUG/clusters/**\"]"
-    MONK_JIT_CLI_TOKEN=$(mint_jit_token "$CLI_PERMS" "cleanup-$CLUSTER_NAME" 60)
+    MONK_JIT_CLI_TOKEN=$(mint_jit_token "$CLI_PERMS" "cleanup-$TARGET_CLUSTER_NAME" 60)
     if [ -z "$MONK_JIT_CLI_TOKEN" ] || [ "$MONK_JIT_CLI_TOKEN" = "null" ]; then
         printf "${RED}Error: JIT CLI token mint returned empty${NC}\n"
         exit 1
     fi
     export MONK_SERVICE_TOKEN="$MONK_JIT_CLI_TOKEN"
 
-    printf "${GREEN}Nuking cluster $CLUSTER_NAME via monkcode...${NC}\n"
+    printf "${GREEN}Nuking cluster $TARGET_CLUSTER_NAME via monkcode...${NC}\n"
     MONK_SOCKET="monkcode://$MONKCODE" monk cluster nuke --force --remove-volumes --remove-snapshots \
         || printf "${YELLOW}The nuke command exited with an error; checking whether the cluster is gone...${NC}\n"
     if cluster_gone; then
@@ -197,10 +209,10 @@ if [ -n "$MONKCODE" ] && [ "$NUKED" != "true" ]; then
     printf "${GREEN}Joining cluster via monkcode...${NC}\n"
     monk cluster join --monkcode "$MONKCODE" --local-name "cleanup-runner-$$"
 
-    printf "${GREEN}Nuking cluster: $CLUSTER_NAME...${NC}\n"
+    printf "${GREEN}Nuking cluster: $TARGET_CLUSTER_NAME...${NC}\n"
     monk cluster nuke --force --remove-volumes --remove-snapshots || true
     if ! cluster_gone; then
-        printf "${RED}Error: Cluster $CLUSTER_NAME still answers after the nuke.${NC}\n"
+        printf "${RED}Error: Cluster $TARGET_CLUSTER_NAME still answers after the nuke.${NC}\n"
         exit 1
     fi
     printf "${GREEN}Cluster nuked.${NC}\n"

@@ -245,6 +245,11 @@ USE_EXISTING_CLUSTER=false
 REGISTRY_SETUP_REQUIRED=false
 ENV_CLUSTER_ID=""
 CLUSTER_ID=""
+# The id of the cluster this run created, recorded as the capsule's own so that cleanup can tell it
+# from one the environment was linked to later. A reused cluster (the environment's link, or one
+# found by name) is not recorded here: it may have been relinked to a shared cluster, and recording
+# it would let cleanup destroy that. An id recorded by an earlier run stays, the platform keeps it.
+OWN_CLUSTER_ID=""
 MONKCODE=""
 
 printf "${GREEN}Checking if environment exists: $ENVIRONMENT_NAME...${NC}\n"
@@ -437,6 +442,9 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
             printf "${RED}Error: Failed to extract monkcode from cluster info${NC}\n"
             exit 1
         fi
+        if [ -n "$CLUSTER_ID" ] && [ "$CLUSTER_ID" != "null" ]; then
+            OWN_CLUSTER_ID="$CLUSTER_ID"
+        fi
         printf "${GREEN}Cluster ready. ID: $CLUSTER_ID${NC}\n"
 
         # Ingress is ensured at the end (B.4), for new and reused clusters alike.
@@ -577,6 +585,7 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
     --arg githubEnvironment "$GITHUB_ENVIRONMENT" \
     --arg status "provisioned" \
     --arg now "$NOW_UTC" \
+    --arg ownClusterId "$OWN_CLUSTER_ID" \
     '{
       settings: {
         capsule: {
@@ -587,7 +596,7 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
           githubEnvironment: $githubEnvironment,
           status: $status,
           updatedAt: $now
-        }
+        } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end)
       }
     }')
 
@@ -624,6 +633,7 @@ else
     ENV_CREATE_PAYLOAD=$(jq -n \
         --arg name "$ENVIRONMENT_NAME" \
         --arg clusterId "$CLUSTER_ID" \
+        --arg ownClusterId "$OWN_CLUSTER_ID" \
         --arg projectSlug "$MONK_PROJECT_SLUG" \
         --arg branch "$BRANCH_NAME" \
         --arg repository "$GITHUB_REPOSITORY" \
@@ -643,7 +653,7 @@ else
               githubEnvironment: $githubEnvironment,
               status: $status,
               updatedAt: $now
-            }
+            } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end)
           }
         }')
     HTTP_CODE=$(curl -s -o /tmp/env_response.json -w "%{http_code}" -X POST "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/environments" \
