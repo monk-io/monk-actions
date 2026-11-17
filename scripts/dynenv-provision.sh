@@ -588,7 +588,7 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
     --arg ownClusterId "$OWN_CLUSTER_ID" \
     '{
       settings: {
-        capsule: {
+        capsule: ({
           source: "dynenv",
           mode: "cloud",
           branch: $branch,
@@ -596,7 +596,7 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
           githubEnvironment: $githubEnvironment,
           status: $status,
           updatedAt: $now
-        } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end)
+        } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end))
       }
     }')
 
@@ -645,7 +645,7 @@ else
           clusterId: $clusterId,
           projectSlug: $projectSlug,
           settings: {
-            capsule: {
+            capsule: ({
               source: "dynenv",
               mode: "cloud",
               branch: $branch,
@@ -653,7 +653,7 @@ else
               githubEnvironment: $githubEnvironment,
               status: $status,
               updatedAt: $now
-            } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end)
+            } + (if $ownClusterId == "" then {} else {ownClusterId: $ownClusterId} end))
           }
         }')
     HTTP_CODE=$(curl -s -o /tmp/env_response.json -w "%{http_code}" -X POST "$MONK_SUBSCRIPTION_API_BASE/$MONK_API_PREFIX/environments" \
