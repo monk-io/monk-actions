@@ -70,18 +70,28 @@ MONKCODE=$(jq -r '.cluster.monkcode // empty' /tmp/env_response.json)
 CLUSTER_ID=$(jq -r '.cluster.clusterId // empty' /tmp/env_response.json)
 LINKED_CLUSTER_NAME=$(jq -r '.cluster.name // empty' /tmp/env_response.json)
 RECORDED_MODE=$(jq -r '.settings.capsule.mode // empty' /tmp/env_response.json)
+RECORDED_OWN_CLUSTER_ID=$(jq -r '.settings.capsule.ownClusterId // empty' /tmp/env_response.json)
 
 # This script destroys the cluster the environment is linked to, which is only right when that
 # cluster is the capsule's own: provision recorded "cloud" for the environment (a shared cluster is
-# recorded "cluster", and a mode this script doesn't know is no better) and the linked cluster is
-# named like the capsule's own, in case the environment was relinked since. Anything else, including
-# an environment with no mode recorded or a link that doesn't say which cluster it is, is left
-# running with its link and record removed; this finishes instead of failing, because the hourly
-# sweep retries a destroy that fails, forever.
+# recorded "cluster", and a mode this script doesn't know is no better) and the linked cluster is the
+# one provision recorded as created for it (ownClusterId), in case the environment was relinked since.
+# The recorded id, not a name recomputed here, is what identifies it: the name comes from the workflow
+# copy that is running, and a delete or PR-close event runs the default branch's copy, which can
+# differ from the copy that provisioned. An environment provisioned before the id was recorded falls
+# back to the name. Anything else, including an environment with no mode recorded or a link that
+# doesn't say which cluster it is, is left running with its link and record removed; this finishes
+# instead of failing, because the hourly sweep retries a destroy that fails, forever.
 OWN_CLUSTER=false
-if [ "$RECORDED_MODE" = "cloud" ] && [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then
-    OWN_CLUSTER=true
+if [ "$RECORDED_MODE" = "cloud" ]; then
+    if [ -n "$RECORDED_OWN_CLUSTER_ID" ]; then
+        [ "$CLUSTER_ID" = "$RECORDED_OWN_CLUSTER_ID" ] && OWN_CLUSTER=true
+    elif [ "$LINKED_CLUSTER_NAME" = "$CLUSTER_NAME" ]; then
+        OWN_CLUSTER=true
+    fi
 fi
+# What this run reports and labels its token with is the cluster it is destroying.
+[ "$OWN_CLUSTER" != "true" ] || [ -z "$LINKED_CLUSTER_NAME" ] || CLUSTER_NAME="$LINKED_CLUSTER_NAME"
 if [ -n "$CLUSTER_ID" ] && [ "$OWN_CLUSTER" != "true" ]; then
     printf "${YELLOW}Warning: the environment is linked to cluster '${LINKED_CLUSTER_NAME:-unknown}', which isn't this capsule's own (recorded mode: ${RECORDED_MODE:-none}). Leaving that cluster running and removing only the environment's link and record.${NC}\n"
     # A workflow annotation, so it is on the run's summary and not only in the step log. The workloads this

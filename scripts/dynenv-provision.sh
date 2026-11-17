@@ -577,11 +577,13 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
     --arg githubEnvironment "$GITHUB_ENVIRONMENT" \
     --arg status "provisioned" \
     --arg now "$NOW_UTC" \
+    --arg clusterId "$CLUSTER_ID" \
     '{
       settings: {
         capsule: {
           source: "dynenv",
           mode: "cloud",
+          ownClusterId: $clusterId,
           branch: $branch,
           repository: $repository,
           githubEnvironment: $githubEnvironment,
@@ -638,6 +640,7 @@ else
             capsule: {
               source: "dynenv",
               mode: "cloud",
+              ownClusterId: $clusterId,
               branch: $branch,
               repository: $repository,
               githubEnvironment: $githubEnvironment,
