@@ -245,6 +245,11 @@ USE_EXISTING_CLUSTER=false
 REGISTRY_SETUP_REQUIRED=false
 ENV_CLUSTER_ID=""
 CLUSTER_ID=""
+# The id of the cluster this run created, recorded as the capsule's own so that cleanup can tell it
+# from one the environment was linked to later. A reused cluster (the environment's link, or one
+# found by name) is not recorded here: it may have been relinked to a shared cluster, and recording
+# it would let cleanup destroy that. An id recorded by an earlier run stays, the platform keeps it.
+OWN_CLUSTER_ID=""
 MONKCODE=""
 
 printf "${GREEN}Checking if environment exists: $ENVIRONMENT_NAME...${NC}\n"
@@ -432,6 +437,7 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
         CLUSTER_INFO=$(monk --json cluster info 2>&1 | tail -n 1)
         MONKCODE=$(echo "$CLUSTER_INFO" | jq -r '.data.monkcode')
         CLUSTER_ID=$(echo "$CLUSTER_INFO" | jq -r '.data.id')
+        OWN_CLUSTER_ID="$CLUSTER_ID"
 
         if [ -z "$MONKCODE" ] || [ "$MONKCODE" = "null" ]; then
             printf "${RED}Error: Failed to extract monkcode from cluster info${NC}\n"
@@ -577,13 +583,13 @@ CAPSULE_SETTINGS_PAYLOAD=$(jq -n \
     --arg githubEnvironment "$GITHUB_ENVIRONMENT" \
     --arg status "provisioned" \
     --arg now "$NOW_UTC" \
-    --arg clusterId "$CLUSTER_ID" \
+    --arg ownClusterId "$OWN_CLUSTER_ID" \
     '{
       settings: {
         capsule: {
           source: "dynenv",
           mode: "cloud",
-          ownClusterId: $clusterId,
+          ownClusterId: $ownClusterId,
           branch: $branch,
           repository: $repository,
           githubEnvironment: $githubEnvironment,
@@ -626,6 +632,7 @@ else
     ENV_CREATE_PAYLOAD=$(jq -n \
         --arg name "$ENVIRONMENT_NAME" \
         --arg clusterId "$CLUSTER_ID" \
+        --arg ownClusterId "$OWN_CLUSTER_ID" \
         --arg projectSlug "$MONK_PROJECT_SLUG" \
         --arg branch "$BRANCH_NAME" \
         --arg repository "$GITHUB_REPOSITORY" \
@@ -640,7 +647,7 @@ else
             capsule: {
               source: "dynenv",
               mode: "cloud",
-              ownClusterId: $clusterId,
+              ownClusterId: $ownClusterId,
               branch: $branch,
               repository: $repository,
               githubEnvironment: $githubEnvironment,
