@@ -19,6 +19,16 @@ registry:
         - "REGISTRY_HTTP_RELATIVEURLS=true"
 nginx:
   defines: runnable
+  # ssl-private-key reads the cluster's TLS key, which monkd 4.0.2+ refuses to
+  # a template that doesn't list it; get-hostname and the connection read
+  # system/registry. htpasswd is added with -r system/nginx, nginx's own scope,
+  # which needs no grant. Daemons before 4.0 ignore this block.
+  permissions:
+    secrets:
+      - cluster:tls-key
+    monk:
+      read:
+        - group/registry
   containers:
     nginx:
       image: docker.io/bitnamilegacy/nginx
