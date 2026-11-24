@@ -191,5 +191,105 @@ rewrite_templates_for_branch feat-a > out.txt 2> err.txt
 eq "the image that can't be rewritten is warned about" "1" "$(grep -c "image 'b:latest'" err.txt)"
 eq "and the other one is rewritten" "1" "$(grep -c 'image: a:latest-feat-a' tpl.yaml)"
 
+# ── pushed_image_ref: where build-images pushes, registry and suffix both optional
+eq "registry only"           "reg.test:7080/app:latest"       "$(pushed_image_ref app "" reg.test:7080)"
+eq "registry and suffix"     "reg.test:7080/app:v1-feat-a"    "$(pushed_image_ref app:v1 feat-a reg.test:7080)"
+eq "suffix only"             "app:v1-feat-a"                  "$(pushed_image_ref app:v1 feat-a "")"
+eq "neither"                 "acme/app:v1"                    "$(pushed_image_ref acme/app:v1 "" "")"
+fails "registry, digest"     pushed_image_ref app@sha256:abcd "" reg.test:7080
+
+# ── the registry before the name (monkd 4.0.2 pulls a short name from Docker Hub)
+cd / && rm -rf "$T"
+T=$(mktemp -d)
+cd "$T" || exit 1
+printf 'LOAD tpl.yaml\nIMAGE app:v2 x . Dockerfile\nIMAGE web x . Dockerfile\nIMAGE gone:1 x . Dockerfile\n' > MANIFEST
+cat > tpl.yaml <<'Y'
+a:
+  containers:
+    one:
+      image: app:v2
+    two:
+      image: app
+      image-tag: v2
+    three:
+      image-tag: "v2"
+      image: "app"
+    four:
+      image: app
+      image-tag: v3
+    five:
+      image: web
+    six:
+      - image: web
+        image-tag: latest
+    seven:
+      image: hub.example/app:v2
+    eight:
+      image: <- $app-image
+Y
+cp tpl.yaml orig.yaml
+rewrite_templates_for_registry reg.test:7080 "" > out.txt 2> err.txt
+eq "registry only" "a:
+  containers:
+    one:
+      image: reg.test:7080/app:v2
+    two:
+      image: reg.test:7080/app
+      image-tag: v2
+    three:
+      image-tag: \"v2\"
+      image: \"reg.test:7080/app\"
+    four:
+      image: app
+      image-tag: v3
+    five:
+      image: reg.test:7080/web:latest
+    six:
+      - image: reg.test:7080/web
+        image-tag: latest
+    seven:
+      image: hub.example/app:v2
+    eight:
+      image: <- \$app-image" "$(cat tpl.yaml)"
+eq "registry only: warns only for the image no template names" "1" "$(wc -l < err.txt | tr -d ' ')"
+eq "and says it would come from Docker Hub" "1" "$(grep -c "gone:1.*Docker Hub" err.txt)"
+cp tpl.yaml before.yaml
+rewrite_templates_for_registry reg.test:7080 "" > /dev/null 2> err2.txt
+eq "registry only: second run changes nothing" "$(cat before.yaml)" "$(cat tpl.yaml)"
+eq "registry only: second run warns only for the missing image" "1" "$(wc -l < err2.txt | tr -d ' ')"
+
+cp orig.yaml tpl.yaml
+rewrite_templates_for_registry reg.test:7080 feat-a > out.txt 2> err.txt
+eq "registry and branch tag" "a:
+  containers:
+    one:
+      image: reg.test:7080/app:v2-feat-a
+    two:
+      image: reg.test:7080/app
+      image-tag: v2-feat-a
+    three:
+      image-tag: \"v2-feat-a\"
+      image: \"reg.test:7080/app\"
+    four:
+      image: app
+      image-tag: v3
+    five:
+      image: reg.test:7080/web:latest-feat-a
+    six:
+      - image: reg.test:7080/web
+        image-tag: latest-feat-a
+    seven:
+      image: hub.example/app:v2
+    eight:
+      image: <- \$app-image" "$(cat tpl.yaml)"
+eq "registry and branch tag: reports where each image goes" "1" "$(grep -c "'app:v2' -> 'reg.test:7080/app:v2-feat-a'" out.txt)"
+cp tpl.yaml before.yaml
+rewrite_templates_for_registry reg.test:7080 feat-a > /dev/null 2>&1
+eq "registry and branch tag: second run changes nothing" "$(cat before.yaml)" "$(cat tpl.yaml)"
+
+cp orig.yaml tpl.yaml
+rewrite_templates_for_registry "" "" > /dev/null 2>&1
+eq "neither registry nor suffix: nothing changes" "$(cat orig.yaml)" "$(cat tpl.yaml)"
+
 cd / && rm -rf "$T"
 [ "$FAILS" -eq 0 ] && echo "all passed" || { echo "$FAILS failed"; exit 1; }

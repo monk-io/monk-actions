@@ -80,10 +80,23 @@ ingress_host() {
     printf '%s.%s' "$label" "$domain"
 }
 
-# build-images pushed each image as <tag>-<IMAGE_SUFFIX>; point the templates at it before loading.
-if [ -n "$IMAGE_SUFFIX" ]; then
-    rewrite_templates_for_branch "$IMAGE_SUFFIX"
+# The registry build-images pushed to: the registry-address input, else, for a capsule, the
+# cluster's own (build-images got it from fetch-metadata, which reads the same secret). Empty when
+# neither is known.
+cluster_registry_address() {
+    monk --json secrets get -r system/registry registry-auth 2>/dev/null | monk_secret_value 2>/dev/null |
+        jq -r '.address // empty' 2>/dev/null || true
+}
+if [ -z "${REGISTRY_ADDRESS:-}" ] && [ "$CAPSULE_MODE" != "static" ]; then
+    REGISTRY_ADDRESS=$(cluster_registry_address)
 fi
+if [ -z "${REGISTRY_ADDRESS:-}" ] && [ -n "$(sh "${PARSE_MANIFEST:-/opt/monk-actions/scripts/parse-manifest.sh}" get-images)" ]; then
+    printf "${YELLOW}Warning: no registry-address, so the templates name the MANIFEST's images as written. On monkd 4.0.2 and later a short image name is pulled from Docker Hub: pass the registry-address build-images pushed to.${NC}\n"
+fi
+
+# build-images pushed each image as <registry>/<tag>[-<IMAGE_SUFFIX>]; point the templates at it
+# before loading.
+rewrite_templates_for_registry "${REGISTRY_ADDRESS:-}" "${IMAGE_SUFFIX:-}"
 
 # WORKLOAD_SECRETS (see workload-secrets.sh) holds this branch's own values, set over the shared
 # ones provision seeded. An empty value means the branch has none, so it is skipped.

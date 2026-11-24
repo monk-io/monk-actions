@@ -106,6 +106,14 @@ change is needed. An image from a MANIFEST `IMAGE` line that isn't written out a
 (for example its tag comes from a variable, as in `image-tag: <- $tag`) can't be rewritten: deploy warns, and that image stays shared. Both actions must get the same value, in any mode; leave
 it empty for cloud capsules, where each branch has its own registry.
 
+Images on the registry. monkd 4.0.2 and later pull a short image name (`image: app:latest`) from
+Docker Hub, never from the registries the cluster is logged in to. So `deploy` points the templates
+at the registry `build-images` pushed to, by the same rules as `image-suffix`: `image: app:latest`
+becomes `image: <registry>/app:latest`, and `image: app` with `image-tag: v2` becomes
+`image: <registry>/app`. In cloud and cluster mode the registry is the cluster's own, which
+`build-images` gets from `fetch-metadata`. In static mode pass the same `registry-address` to
+`deploy` as to `build-images`; without it the templates keep the names as written, and deploy warns.
+
 A branch's own secret values. `deploy` takes `workload-secrets` (single-line `KEY=value` lines, as for `provision`; capsules only) and sets them on
 the cluster before the workload updates, over the shared values `provision` seeded. Run `deploy` in
 the branch's GitHub environment (`capsule-<environment>`) and pass `KEY=${{ secrets.KEY }}`: a secret
@@ -141,6 +149,7 @@ jobs:
           workload: "myapp/stack"
           branch-tag: "default"
           capsule-mode: static
+          registry-address: ${{ secrets.REGISTRY_ADDRESS }}
 ```
 
 See the [Monk VS Code extension](https://github.com/monk-io/vscode-monk) repo for a complete reference workflow including build, deploy, and cleanup stages.
