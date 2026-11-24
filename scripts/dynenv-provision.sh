@@ -522,7 +522,7 @@ if [ "$USE_EXISTING_CLUSTER" != "true" ] || [ "$REGISTRY_SETUP_REQUIRED" = "true
             RETRIES=$((RETRIES + 1))
             printf "  Waiting for registry to be ready (attempt $RETRIES/5)...\n"
             sleep 10
-            if monk registry --server "$REGISTRY_ADDRESS" -u "$REGISTRY_USERNAME" -p "$REGISTRY_PASSWORD" -a registry.local 2>/dev/null; then
+            if monk registry --server "$REGISTRY_ADDRESS" -u "$REGISTRY_USERNAME" -p "$REGISTRY_PASSWORD" 2>/dev/null; then
                 REGISTRY_READY=true
                 break
             fi
