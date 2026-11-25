@@ -14,6 +14,10 @@ cat > "$T/bin/monk" <<'S'
 # record the call; `load` also records the template as it is at that moment
 case "$*" in
     *"cluster peers"*) echo '[]'; exit 0 ;;
+    # the cluster registry's secret, as provision and the agent store it; none when STUB_REGISTRY is empty
+    *"secrets get -r system/registry registry-auth"*)
+        [ -z "$STUB_REGISTRY" ] || printf '{"ok":true,"data":{"value":"{\\"address\\":\\"%s\\"}"}}\n' "$STUB_REGISTRY"
+        exit 0 ;;
 esac
 echo "monk $*" >> "$STUB_LOG"
 case "$1" in load) cat template.yaml >> "$STUB_LOG" ;; esac
@@ -22,6 +26,7 @@ S
 chmod +x "$T/bin/monk"
 export PATH="$T/bin:$PATH" STUB_LOG="$T/log" PARSE_MANIFEST="$SCRIPTS/parse-manifest.sh"
 export MONKCODE=x MONK_SERVICE_TOKEN=y MONK_WORKLOAD=sample/stack ENVIRONMENT_NAME=feat-a
+export STUB_REGISTRY=reg.test:7080
 
 cd "$T/work" || exit 1
 printf 'REPO sample\nLOAD template.yaml\nENTRY sample/stack\nIMAGE app:latest sample/web . Dockerfile\n' > MANIFEST
@@ -35,28 +40,28 @@ export WORKLOAD_SECRETS='greeting=hello=world
 empty=
 other=two'
 eq "cluster deploy succeeds" 0 "$(run)"
-eq "cluster: order, scope, values with =, empty skipped, template rewritten" "monk secrets add --scope feat-a greeting=hello=world
+eq "cluster: order, scope, values with =, empty skipped, template on the cluster registry at the branch tag" "monk secrets add --scope feat-a greeting=hello=world
 monk secrets add --scope feat-a other=two
 monk load --repo feat-a MANIFEST
 web:
   containers:
     c:
-      image: app:latest-feat-a
+      image: reg.test:7080/app:latest-feat-a
 monk update -t capsule-pool --repo feat-a --secret-scope feat-a -s environment=feat-a feat-a/sample/stack
 monk ps" "$(cat "$STUB_LOG")"
 eq "values are not printed" 0 "$(grep -c 'hello=world\|two' "$T/out")"
 
-# cloud mode: global secrets, no suffix: template as written
+# cloud mode: global secrets, no suffix: the tag as written, on the cluster registry
 printf 'web:\n  containers:\n    c:\n      image: app:latest\n' > template.yaml
 export CAPSULE_MODE=cloud BRANCH_TAG=branch-feat-a; unset IMAGE_SUFFIX
 export WORKLOAD_SECRETS='greeting=hi'
 eq "cloud deploy succeeds" 0 "$(run)"
-eq "cloud: global secret, template as written" "monk secrets add -g greeting=hi
+eq "cloud: global secret, template on the cluster registry" "monk secrets add -g greeting=hi
 monk load MANIFEST
 web:
   containers:
     c:
-      image: app:latest
+      image: reg.test:7080/app:latest
 monk update -t branch-feat-a -s environment=feat-a sample/stack
 monk ps" "$(cat "$STUB_LOG")"
 
@@ -68,7 +73,9 @@ eq "multiline value set whole" "monk secrets add -g key=line1
 line2
 monk secrets add -g greeting=hi" "$(sed -n 1,3p "$STUB_LOG")"
 
-# static: the image suffix still applies (build-images doesn't know the mode), secrets are ignored
+# static: the image suffix still applies (build-images doesn't know the mode), secrets are ignored,
+# and the cluster's registry is not assumed: static flows may push to their own
+printf 'web:\n  containers:\n    c:\n      image: app:latest\n' > template.yaml
 export CAPSULE_MODE=static IMAGE_SUFFIX=feat-a
 eq "static deploy succeeds" 0 "$(run)"
 eq "static: rewrite, no secrets" "monk load MANIFEST
@@ -79,6 +86,23 @@ web:
 monk update -t branch-feat-a sample/stack
 monk ps" "$(cat "$STUB_LOG")"
 eq "static says the secrets are ignored" 1 "$(grep -c 'only used for capsules' "$T/out")"
+eq "static without registry-address warns about Docker Hub" 1 "$(grep -c 'pulled from Docker Hub' "$T/out")"
+
+# static with registry-address: the templates name that registry
+printf 'web:\n  containers:\n    c:\n      image: app:latest\n' > template.yaml
+export REGISTRY_ADDRESS=own.registry.example
+eq "static with a registry deploys" 0 "$(run)"
+eq "static: template on the given registry" "      image: own.registry.example/app:latest-feat-a" "$(grep 'image:' "$STUB_LOG")"
+eq "static with a registry doesn't warn" 0 "$(grep -c 'pulled from Docker Hub' "$T/out")"
+unset REGISTRY_ADDRESS
+
+# a capsule whose cluster has no registry secret: the names as written, and a warning
+printf 'web:\n  containers:\n    c:\n      image: app:latest\n' > template.yaml
+export CAPSULE_MODE=cloud STUB_REGISTRY=; unset IMAGE_SUFFIX
+eq "no cluster registry still deploys" 0 "$(run)"
+eq "no cluster registry: template as written" "      image: app:latest" "$(grep 'image:' "$STUB_LOG")"
+eq "no cluster registry warns about Docker Hub" 1 "$(grep -c 'pulled from Docker Hub' "$T/out")"
+export STUB_REGISTRY=reg.test:7080
 
 # lines that aren't NAME=value, or whose name is odd, are skipped without being printed
 printf 'web:\n  containers:\n    c:\n      image: app:latest\n' > template.yaml
